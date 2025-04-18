@@ -10,6 +10,13 @@
     "package": "plasmo package"
   },
   "dependencies": {
+    "@chakra-ui/react": "^3.16.0",
+    "@chakra-ui/theme-tools": "^2.2.6",
+    "@chakra-ui/toast": "^7.0.2",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "axios": "^1.8.4",
+    "framer-motion": "^12.7.4",
     "plasmo": "0.90.3",
     "react": "18.2.0",
     "react-dom": "18.2.0"
@@ -28,7 +35,8 @@
       "https://*/*"
     ],
     "permissions": [
-      "tabs"
+      "tabs",
+      "storage"
     ]
   }
 }
