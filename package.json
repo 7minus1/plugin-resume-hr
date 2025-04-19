@@ -15,6 +15,7 @@
     "@chakra-ui/toast": "^7.0.2",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
+    "@plasmohq/messaging": "^0.7.1",
     "axios": "^1.8.4",
     "framer-motion": "^12.7.4",
     "plasmo": "0.90.3",
@@ -32,11 +33,11 @@
   },
   "manifest": {
     "host_permissions": [
-      "https://*/*"
+      "http://localhost:3000/*"
     ],
     "permissions": [
-      "tabs",
-      "storage"
+      "storage",
+      "activeTab"
     ]
   }
 }
