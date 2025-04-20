@@ -1,0 +1,15 @@
+// 环境配置
+const ENV = {
+  development: {
+    API_BASE_URL: 'https://plugin-backend-psi.vercel.app/api'
+  },
+  production: {
+    API_BASE_URL: 'https://plugin-backend-psi.vercel.app/api'
+  }
+};
+
+// 根据环境变量获取当前环境
+const currentEnv = process.env.NODE_ENV || 'development';
+
+// 导出当前环境的配置
+export const config = ENV[currentEnv]; 

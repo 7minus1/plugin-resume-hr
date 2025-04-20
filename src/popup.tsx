@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { getCurrentUser, isAuthenticated } from "./services/authService"
+import { config } from './config/env'
 
 const Popup = () => {
   const [file, setFile] = useState<File | null>(null)
@@ -58,7 +59,7 @@ const Popup = () => {
         return;
       }
 
-      const response = await fetch("http://localhost:3000/api/resume/upload", {
+      const response = await fetch(`${config.API_BASE_URL}/resume/upload`, {
         method: "POST",
         headers: {
           'Authorization': `Bearer ${token}`

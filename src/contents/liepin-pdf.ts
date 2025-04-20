@@ -1,5 +1,6 @@
 import type { PlasmoCSConfig } from "plasmo"
 import { sendToBackground } from "@plasmohq/messaging"
+import { config as envConfig } from '../config/env';
 
 export const config: PlasmoCSConfig = {
   matches: ["https://lpt.liepin.com/chat/im*"],
@@ -117,7 +118,7 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, statusElement: 
       formData.append('file', file)
 
       console.log('发送请求到服务器...')
-      const response = await fetch('http://localhost:3000/api/resume/upload', {
+      const response = await fetch(`${envConfig.API_BASE_URL}/resume/upload`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`

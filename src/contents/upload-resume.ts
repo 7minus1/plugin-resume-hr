@@ -1,4 +1,5 @@
 import type { PlasmoMessaging } from "@plasmohq/messaging"
+import { config } from '../config/env';
 
 const handler: PlasmoMessaging.MessageHandler = async (req, res) => {
   console.log('Message handler received request:', req)
@@ -14,7 +15,7 @@ const handler: PlasmoMessaging.MessageHandler = async (req, res) => {
     const timeout = setTimeout(() => controller.abort(), 30000) // 30秒超时
 
     console.log('Sending request to server...')
-    const response = await fetch('http://localhost:3000/api/resume/upload', {
+    const response = await fetch(`${config.API_BASE_URL}/resume/upload`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`

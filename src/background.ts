@@ -1,4 +1,5 @@
 import type { PlasmoMessaging } from "@plasmohq/messaging"
+import { config } from './config/env';
 
 export const handler: PlasmoMessaging.MessageHandler = async (req, res) => {
   if (req.name !== "upload-resume") return
@@ -9,7 +10,7 @@ export const handler: PlasmoMessaging.MessageHandler = async (req, res) => {
     const formData = new FormData()
     formData.append('file', file)
 
-    const response = await fetch('http://localhost:3000/api/resume/upload', {
+    const response = await fetch(`${config.API_BASE_URL}/resume/upload`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`

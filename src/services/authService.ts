@@ -1,8 +1,9 @@
 // 用户认证服务
 import axios from 'axios';
+import { config } from '../config/env';
 
 // API基础URL
-const API_BASE_URL = 'http://localhost:3000/api';
+// const API_BASE_URL = 'http://localhost:3000/api';
 
 // 用户类型定义
 interface User {
@@ -22,7 +23,7 @@ interface LoginResponse {
 
 // 创建axios实例
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: config.API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
