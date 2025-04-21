@@ -84,7 +84,7 @@ const Button = styled.button<{ variant?: 'primary' | 'secondary' }>`
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  background-color: ${props => props.variant === 'secondary' ? '#e5e7eb' : '#7c3aed'};
+  background-color: ${props => props.variant === 'secondary' ? '#e5e7eb' : '#ff4500'};
   color: ${props => props.variant === 'secondary' ? '#4b5563' : 'white'};
   &:hover {
     opacity: 0.9;
@@ -101,12 +101,12 @@ const Tab = styled.button<{ active: boolean }>`
   padding: 8px 16px;
   border: none;
   background: none;
-  color: ${props => props.active ? '#7c3aed' : '#6b7280'};
-  border-bottom: 2px solid ${props => props.active ? '#7c3aed' : 'transparent'};
+  color: ${props => props.active ? '#ff4500' : '#6b7280'};
+  border-bottom: 2px solid ${props => props.active ? '#ff4500' : 'transparent'};
   cursor: pointer;
   font-weight: ${props => props.active ? '500' : 'normal'};
   &:hover {
-    color: #7c3aed;
+    color: #ff4500;
   }
 `;
 
@@ -146,13 +146,13 @@ const BitableTitleText = styled.h3`
 const BitableEditButton = styled.button`
   padding: 4px 12px;
   background-color: transparent;
-  color: #7c3aed;
-  border: 1px solid #7c3aed;
+  color: #ff4500;
+  border: 1px solid #ff4500;
   border-radius: 4px;
   font-size: 12px;
   cursor: pointer;
   &:hover {
-    background-color: #f3e8ff;
+    background-color: #fff5f2;
   }
 `;
 
@@ -175,14 +175,14 @@ const BitableInput = styled.input<{ readOnly?: boolean }>`
 const BitableButton = styled.button`
   width: 100%;
   padding: 8px 12px;
-  background-color: #7c3aed;
+  background-color: #ff4500;
   color: white;
   border: none;
   border-radius: 4px;
   font-size: 14px;
   cursor: pointer;
   &:hover {
-    background-color: #6d28d9;
+    background-color: #e63e00;
   }
   &:disabled {
     background-color: #9ca3af;
@@ -390,7 +390,7 @@ const HomePage = () => {
             fontSize: "24px",
             color: "#333",
             fontWeight: 500
-          }}>AI简历解析</h1>
+          }}>推鲤 AI 快聘: HR筛选简历的好助手</h1>
           
           <UserInfo>
             {user ? (
@@ -417,7 +417,7 @@ const HomePage = () => {
             height: "fit-content"
           }}>
             <div style={{
-              borderLeft: "4px solid #7c3aed",
+              borderLeft: "4px solid #ff4500",
               paddingLeft: "12px",
               marginBottom: "20px"
             }}>
@@ -514,30 +514,7 @@ const HomePage = () => {
               </div>
             )}
 
-            <div style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "12px",
-              marginTop: "20px"
-            }}>
-              {["基本信息", "工作经历", "教育背景"].map((title, index) => (
-                <div key={index} style={{
-                  padding: "16px",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "6px"
-                }}>
-                  <h3 style={{
-                    margin: "0 0 8px 0",
-                    fontSize: "16px",
-                    color: "#333"
-                  }}>{title}</h3>
-                  <div style={{
-                    color: "#666",
-                    fontSize: "14px"
-                  }}>等待解析...</div>
-                </div>
-              ))}
-            </div>
+            
           </div>
 
           {/* 右侧面板 */}
@@ -549,7 +526,7 @@ const HomePage = () => {
           }}>
             {/* 会员卡片 */}
             <div style={{
-              backgroundColor: "#f3e8ff",
+              backgroundColor: "#fff5f2",
               borderRadius: "8px",
               padding: "24px",
               position: "relative",
@@ -558,7 +535,7 @@ const HomePage = () => {
               <div style={{
                 display: "inline-block",
                 padding: "4px 12px",
-                backgroundColor: "#7c3aed",
+                backgroundColor: "#ff4500",
                 color: "white",
                 borderRadius: "4px",
                 fontSize: "14px",
@@ -597,7 +574,7 @@ const HomePage = () => {
                     <span style={{
                       width: "6px",
                       height: "6px",
-                      backgroundColor: "#7c3aed",
+                      backgroundColor: "#ff4500",
                       borderRadius: "50%",
                       marginRight: "8px"
                     }}></span>
@@ -609,7 +586,7 @@ const HomePage = () => {
               <button style={{
                 width: "100%",
                 padding: "12px",
-                backgroundColor: "#7c3aed",
+                backgroundColor: "#ff4500",
                 color: "white",
                 border: "none",
                 borderRadius: "6px",
@@ -618,92 +595,11 @@ const HomePage = () => {
                 fontWeight: 500,
                 transition: "background-color 0.3s ease"
               }}
-              className="purple-button">
+              className="orange-button">
                 立即购买
               </button>
             </div>
 
-            {/* 企业版卡片 */}
-            <div style={{
-              backgroundColor: "#e0f2fe",
-              borderRadius: "8px",
-              padding: "24px"
-            }}>
-              <div style={{
-                display: "inline-block",
-                padding: "4px 12px",
-                backgroundColor: "#0284c7",
-                color: "white",
-                borderRadius: "4px",
-                fontSize: "14px",
-                marginBottom: "16px"
-              }}>
-                企业旗舰版
-              </div>
-
-              <div style={{
-                fontSize: "24px",
-                fontWeight: "bold",
-                color: "#333",
-                marginBottom: "24px"
-              }}>
-                企业定制
-                <div style={{
-                  fontSize: "14px",
-                  color: "#666",
-                  fontWeight: "normal",
-                  marginTop: "4px"
-                }}>
-                  不限用户数
-                </div>
-              </div>
-
-              <ul style={{
-                listStyle: "none",
-                padding: 0,
-                margin: 0,
-                marginBottom: "24px"
-              }}>
-                {[
-                  "智能解析简历关键信息",
-                  "全流程智能协同招聘管理",
-                  "AI面试智能评估辅助决策"
-                ].map((feature, index) => (
-                  <li key={index} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    marginBottom: "8px",
-                    color: "#4b5563",
-                    fontSize: "14px"
-                  }}>
-                    <span style={{
-                      width: "6px",
-                      height: "6px",
-                      backgroundColor: "#0284c7",
-                      borderRadius: "50%",
-                      marginRight: "8px"
-                    }}></span>
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-
-              <button style={{
-                width: "100%",
-                padding: "12px",
-                backgroundColor: "#0284c7",
-                color: "white",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: 500,
-                transition: "background-color 0.3s ease"
-              }}
-              className="blue-button">
-                立即咨询
-              </button>
-            </div>
           </div>
         </div>
 

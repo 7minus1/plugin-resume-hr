@@ -31,6 +31,10 @@ const Popup = () => {
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user) {
+      setError("请先登录后再上传文件");
+      return;
+    }
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0])
       setUploadStatus("") // 清除之前的提示信息
@@ -38,6 +42,10 @@ const Popup = () => {
   }
 
   const handleUpload = async () => {
+    if (!user) {
+      setError("请先登录后再上传文件");
+      return;
+    }
     if (!file) {
       setUploadStatus("请先选择文件")
       return
@@ -107,8 +115,8 @@ const Popup = () => {
           style={{
             padding: "6px 12px",
             backgroundColor: "transparent",
-            color: "#4CAF50",
-            border: "1px solid #4CAF50",
+            color: "#ff4500",
+            border: "1px solid #ff4500",
             borderRadius: "4px",
             cursor: "pointer",
             fontSize: "12px",
@@ -138,12 +146,14 @@ const Popup = () => {
       
       <div style={{ 
         marginBottom: "20px",
-        border: "2px dashed #ddd",
+        border: "2px dashed #ff4500",
         borderRadius: "8px",
         padding: "20px",
         textAlign: "center",
-        backgroundColor: "#fafafa",
-        transition: "all 0.3s ease"
+        backgroundColor: "#fff5f2",
+        transition: "all 0.3s ease",
+        cursor: user ? "pointer" : "not-allowed",
+        opacity: user ? 1 : 0.7
       }}>
         <input
           type="file"
@@ -153,18 +163,25 @@ const Popup = () => {
             display: "none"
           }}
           id="fileInput"
+          disabled={!user}
         />
         <label 
           htmlFor="fileInput"
           style={{
             display: "block",
-            cursor: "pointer",
+            cursor: user ? "pointer" : "not-allowed",
             color: "#666"
+          }}
+          onClick={(e) => {
+            if (!user) {
+              e.preventDefault();
+              setError("请先登录后再上传文件");
+            }
           }}
         >
           <div style={{ marginBottom: "8px" }}>
             {file ? (
-              <span style={{ color: "#4CAF50", fontWeight: 500 }}>
+              <span style={{ color: "#ff4500", fontWeight: 500 }}>
                 已选择: {file.name}
               </span>
             ) : (
@@ -183,7 +200,7 @@ const Popup = () => {
         style={{
           width: "100%",
           padding: "10px 16px",
-          backgroundColor: !file || isUploading ? "#ccc" : "#4CAF50",
+          backgroundColor: !file || isUploading ? "#e0e0e0" : "#ff4500",
           color: "white",
           border: "none",
           borderRadius: "6px",
@@ -191,36 +208,44 @@ const Popup = () => {
           fontSize: "14px",
           fontWeight: 500,
           transition: "all 0.3s ease"
+        }}
+        onMouseOver={(e) => {
+          if (!file || isUploading) return;
+          e.currentTarget.style.backgroundColor = "#e63e00";
+        }}
+        onMouseOut={(e) => {
+          if (!file || isUploading) return;
+          e.currentTarget.style.backgroundColor = "#ff4500";
         }}>
         {isUploading ? "上传中..." : "上传文件"}
       </button>
 
-      {uploadStatus && (
-        <p style={{ 
-          marginTop: "12px", 
-          padding: "8px 12px",
-          borderRadius: "4px",
-          fontSize: "14px",
-          backgroundColor: uploadStatus.includes("成功") ? "#e8f5e9" : "#ffebee",
-          color: uploadStatus.includes("成功") ? "#2e7d32" : "#c62828",
-          textAlign: "center"
-        }}>
-          {uploadStatus}
-        </p>
-      )}
-
       {error && (
-        <p style={{ 
-          marginTop: "12px", 
+        <div style={{
+          marginTop: "12px",
           padding: "8px 12px",
+          backgroundColor: "#fff5f2",
+          color: "#ff4500",
           borderRadius: "4px",
           fontSize: "14px",
-          backgroundColor: "#ffebee",
-          color: "#c62828",
           textAlign: "center"
         }}>
           {error}
-        </p>
+        </div>
+      )}
+
+      {uploadStatus && !error && (
+        <div style={{
+          marginTop: "12px",
+          padding: "8px 12px",
+          backgroundColor: uploadStatus.includes("成功") ? "#fff5f2" : "#ffebee",
+          color: uploadStatus.includes("成功") ? "#ff4500" : "#c62828",
+          borderRadius: "4px",
+          fontSize: "14px",
+          textAlign: "center"
+        }}>
+          {uploadStatus}
+        </div>
       )}
     </div>
   )
