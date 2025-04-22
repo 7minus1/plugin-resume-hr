@@ -1,703 +1,469 @@
 import { useState, useEffect } from "react"
-import "./home.css"
+import "../style.css"
 import { login, register, getUserProfile, logout, getBitableInfo, updateBitableInfo } from "../services/authService"
-import styled from "@emotion/styled"
+import { Button } from "../components/ui/button"
+import { Input } from "../components/ui/input"
+import { Label } from "../components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/dialog"
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "../components/ui/form"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
+import { Toast } from "../components/ui/toast"
 
-const Modal = styled.div<{ isOpen: boolean }>`
-  display: ${props => props.isOpen ? 'flex' : 'none'};
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-`;
-
-const ModalContent = styled.div`
-  background-color: white;
-  padding: 24px;
-  border-radius: 8px;
-  width: 400px;
-  max-width: 90%;
-`;
-
-const ModalHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-`;
-
-const ModalTitle = styled.h2`
-  margin: 0;
-  font-size: 20px;
-  color: #333;
-`;
-
-const CloseButton = styled.button`
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  color: #666;
-  padding: 4px;
-  &:hover {
-    color: #333;
+const formSchema = z.object({
+  email: z.string().email("请输入有效的邮箱地址"),
+  password: z.string().min(6, "密码至少需要6个字符"),
+  username: z.string().optional(),
+  confirmPassword: z.string().optional(),
+}).refine((data) => {
+  if (data.confirmPassword) {
+    return data.password === data.confirmPassword
   }
-`;
-
-const Form = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-`;
-
-const FormGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-`;
-
-const Label = styled.label`
-  font-size: 14px;
-  color: #4b5563;
-`;
-
-const Input = styled.input`
-  padding: 8px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  font-size: 14px;
-  &:focus {
-    outline: none;
-    border-color: #7c3aed;
-  }
-`;
-
-const Button = styled.button<{ variant?: 'primary' | 'secondary' }>`
-  padding: 10px 16px;
-  border: none;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  background-color: ${props => props.variant === 'secondary' ? '#e5e7eb' : '#ff4500'};
-  color: ${props => props.variant === 'secondary' ? '#4b5563' : 'white'};
-  &:hover {
-    opacity: 0.9;
-  }
-`;
-
-const Tabs = styled.div`
-  display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
-`;
-
-const Tab = styled.button<{ active: boolean }>`
-  padding: 8px 16px;
-  border: none;
-  background: none;
-  color: ${props => props.active ? '#ff4500' : '#6b7280'};
-  border-bottom: 2px solid ${props => props.active ? '#ff4500' : 'transparent'};
-  cursor: pointer;
-  font-weight: ${props => props.active ? '500' : 'normal'};
-  &:hover {
-    color: #ff4500;
-  }
-`;
-
-const UserInfo = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-left: auto;
-`;
-
-const UserName = styled.span`
-  color: #4b5563;
-  font-size: 14px;
-`;
-
-const BitableForm = styled.form`
-  margin-top: 20px;
-  padding: 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background-color: #f9fafb;
-`;
-
-const BitableTitle = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-`;
-
-const BitableTitleText = styled.h3`
-  margin: 0;
-  font-size: 16px;
-  color: #333;
-`;
-
-const BitableEditButton = styled.button`
-  padding: 4px 12px;
-  background-color: transparent;
-  color: #ff4500;
-  border: 1px solid #ff4500;
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  &:hover {
-    background-color: #fff5f2;
-  }
-`;
-
-const BitableInput = styled.input<{ readOnly?: boolean }>`
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  font-size: 14px;
-  margin-bottom: 12px;
-  background-color: ${props => props.readOnly ? '#f3f4f6' : 'white'};
-  color: ${props => props.readOnly ? '#6b7280' : '#111827'};
-  cursor: ${props => props.readOnly ? 'default' : 'text'};
-  &:focus {
-    outline: none;
-    border-color: #7c3aed;
-  }
-`;
-
-const BitableButton = styled.button`
-  width: 100%;
-  padding: 8px 12px;
-  background-color: #ff4500;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-  &:hover {
-    background-color: #e63e00;
-  }
-  &:disabled {
-    background-color: #9ca3af;
-    cursor: not-allowed;
-  }
-`;
-
-const BitableInfo = styled.div`
-  margin-bottom: 12px;
-`;
-
-const BitableLabel = styled.div`
-  font-size: 12px;
-  color: #6b7280;
-  margin-bottom: 4px;
-`;
-
-const BitableValue = styled.div`
-  font-size: 14px;
-  color: #111827;
-  word-break: break-all;
-`;
+  return true
+}, {
+  message: "两次输入的密码不一致",
+  path: ["confirmPassword"],
+})
 
 const HomePage = () => {
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
-  const [user, setUser] = useState(null);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    confirmPassword: '',
-    username: '',
-    verificationCode: ''
-  });
-  const [passwordError, setPasswordError] = useState('');
-  const [bitableInfo, setBitableInfo] = useState<{
-    bitableUrl: string;
-    bitableToken: string;
-  }>({
+  const [isLoginOpen, setIsLoginOpen] = useState(false)
+  const [isRegisterOpen, setIsRegisterOpen] = useState(false)
+  const [user, setUser] = useState(null)
+  const [passwordError, setPasswordError] = useState('')
+  const [bitableInfo, setBitableInfo] = useState({
     bitableUrl: '',
     bitableToken: ''
-  });
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
+  })
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState('')
+  const [isEditing, setIsEditing] = useState(false)
   const [tempBitableInfo, setTempBitableInfo] = useState({
     bitableUrl: '',
     bitableToken: ''
-  });
+  })
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+      username: "",
+      confirmPassword: "",
+    },
+  })
 
   useEffect(() => {
-    checkAuthStatus();
-  }, []);
+    checkAuthStatus()
+  }, [])
 
   useEffect(() => {
     if (user) {
-      loadBitableInfo();
+      loadBitableInfo()
     }
-  }, [user]);
+  }, [user])
 
   const checkAuthStatus = async () => {
     try {
-      const result = await chrome.storage.local.get(['access_token', 'user']);
-      const token = result.access_token;
-      const userStr = result.user;
+      const result = await chrome.storage.local.get(['access_token', 'user'])
+      const token = result.access_token
+      const userStr = result.user
       
       if (token && userStr) {
         try {
-          const userData = JSON.parse(userStr);
-          setUser(userData);
+          const userData = JSON.parse(userStr)
+          setUser(userData)
         } catch (error) {
-          console.error('解析用户数据失败:', error);
-          await chrome.storage.local.remove(['access_token', 'user']);
-          setUser(null);
+          console.error('解析用户数据失败:', error)
+          await chrome.storage.local.remove(['access_token', 'user'])
+          setUser(null)
         }
       } else {
-        setUser(null);
+        setUser(null)
       }
     } catch (error) {
-      console.error('获取用户信息失败:', error);
-      await chrome.storage.local.remove(['access_token', 'user']);
-      setUser(null);
+      console.error('获取用户信息失败:', error)
+      await chrome.storage.local.remove(['access_token', 'user'])
+      setUser(null)
     }
-  };
+  }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (values: z.infer<typeof formSchema>) => {
     try {
       const response = await login({
-        email: formData.email,
-        password: formData.password
-      });
-      setIsLoginModalOpen(false);
-      setUser(response.user);
+        email: values.email,
+        password: values.password
+      })
+      setIsLoginOpen(false)
+      setUser(response.user)
+      form.reset()
+      setToast({ message: "登录成功", type: "success" })
     } catch (error) {
-      console.error('登录失败:', error);
-      alert('登录失败，请检查邮箱和密码');
+      console.error('登录失败:', error)
+      setToast({ message: "登录失败，请检查邮箱和密码", type: "error" })
     }
-  };
+  }
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (formData.password !== formData.confirmPassword) {
-      setPasswordError('两次输入的密码不一致');
-      return;
-    }
+  const handleRegister = async (values: z.infer<typeof formSchema>) => {
     try {
       await register({
-        email: formData.email,
-        password: formData.password,
-        username: formData.username || undefined
-      });
-      setIsRegisterModalOpen(false);
-      alert('注册成功，请登录');
+        email: values.email,
+        password: values.password,
+        username: values.username || undefined
+      })
+      setIsRegisterOpen(false)
+      setToast({ message: "注册成功，请登录", type: "success" })
+      form.reset()
     } catch (error) {
-      console.error('注册失败:', error);
-      alert('注册失败，请重试');
+      console.error('注册失败:', error)
+      setToast({ message: "注册失败，请重试", type: "error" })
     }
-  };
+  }
 
   const handleLogout = async () => {
-    await logout();
-    setUser(null);
-  };
+    await logout()
+    setUser(null)
+  }
 
   const loadBitableInfo = async () => {
     try {
-      const info = await getBitableInfo();
+      const info = await getBitableInfo()
       if (info) {
         setBitableInfo({
           bitableUrl: info.bitableUrl,
           bitableToken: info.bitableToken
-        });
+        })
         setTempBitableInfo({
           bitableUrl: info.bitableUrl,
           bitableToken: info.bitableToken
-        });
+        })
       }
     } catch (error) {
-      console.error('获取多维表格信息失败:', error);
+      console.error('获取多维表格信息失败:', error)
     }
-  };
+  }
 
   const handleEdit = () => {
-    setIsEditing(true);
-    setTempBitableInfo({ ...bitableInfo });
-  };
+    setIsEditing(true)
+    setTempBitableInfo({ ...bitableInfo })
+  }
 
   const handleCancel = () => {
-    setIsEditing(false);
-    setTempBitableInfo({ ...bitableInfo });
-    setSaveStatus('');
-  };
+    setIsEditing(false)
+    setTempBitableInfo({ ...bitableInfo })
+    setSaveStatus('')
+  }
 
   const handleBitableSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    setSaveStatus('');
+    e.preventDefault()
+    setIsSaving(true)
+    setSaveStatus('')
 
     try {
-      await updateBitableInfo(tempBitableInfo);
-      setBitableInfo(tempBitableInfo);
-      setSaveStatus('保存成功');
-      setIsEditing(false);
+      await updateBitableInfo(tempBitableInfo)
+      setBitableInfo(tempBitableInfo)
+      setSaveStatus('保存成功')
+      setIsEditing(false)
     } catch (error) {
-      console.error('更新多维表格信息失败:', error);
-      setSaveStatus('保存失败，请重试');
+      console.error('更新多维表格信息失败:', error)
+      setSaveStatus('保存失败，请重试')
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
+  }
 
   const handleBitableChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
+    const { name, value } = e.target
     setTempBitableInfo(prev => ({
       ...prev,
       [name]: value
-    }));
-  };
+    }))
+  }
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      backgroundColor: "#f5f7fa",
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-    }}>
-      <div style={{
-        padding: "24px",
-        display: "flex",
-        flexDirection: "column",
-        minHeight: "100vh"
-      }}>
-        <header style={{
-          display: "flex",
-          alignItems: "center",
-          marginBottom: "24px"
-        }}>
-          <h1 style={{
-            margin: 0,
-            fontSize: "24px",
-            color: "#333",
-            fontWeight: 500
-          }}>推鲤 AI 快聘: HR筛选简历的好助手</h1>
+    <div className="plasmo-min-h-screen plasmo-bg-[#f5f7fa] plasmo-font-sans">
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+      <div className="plasmo-p-6 plasmo-flex plasmo-flex-col">
+        <header className="plasmo-flex plasmo-items-center plasmo-mb-6">
+          <h1 className="plasmo-text-2xl plasmo-font-medium plasmo-text-[#333] plasmo-m-0">
+            推鲤 AI 快聘: HR筛选简历的好助手
+          </h1>
           
-          <UserInfo>
+          <div className="plasmo-ml-auto plasmo-flex plasmo-items-center plasmo-gap-3">
             {user ? (
               <>
-                <UserName>欢迎，{user.username || user.email}</UserName>
-                <Button variant="secondary" onClick={handleLogout}>登出</Button>
+                <span className="plasmo-text-[#4b5563] plasmo-text-sm">
+                  欢迎，{user.username || user.email}
+                </span>
+                <Button variant="outline" onClick={handleLogout}>
+                  登出
+                </Button>
               </>
             ) : (
               <>
-                <Button onClick={() => setIsLoginModalOpen(true)} style={{ marginRight: '8px' }}>登录</Button>
-                <Button onClick={() => setIsRegisterModalOpen(true)}>注册</Button>
+                <Dialog open={isLoginOpen} onOpenChange={setIsLoginOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="default" className="plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white">登录</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>用户登录</DialogTitle>
+                    </DialogHeader>
+                    <Form {...form}>
+                      <form onSubmit={form.handleSubmit(handleLogin)} className="plasmo-space-y-4">
+                        <FormField
+                          control={form.control}
+                          name="email"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>邮箱</FormLabel>
+                              <FormControl>
+                                <Input type="email" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>密码</FormLabel>
+                              <FormControl>
+                                <Input type="password" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button type="submit" className="plasmo-w-full plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white">登录</Button>
+                      </form>
+                    </Form>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={isRegisterOpen} onOpenChange={setIsRegisterOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="default" className="plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white">注册</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>用户注册</DialogTitle>
+                    </DialogHeader>
+                    <Form {...form}>
+                      <form onSubmit={form.handleSubmit(handleRegister)} className="plasmo-space-y-4">
+                        <FormField
+                          control={form.control}
+                          name="email"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>邮箱 <span className="plasmo-text-[#ff4500]">*</span></FormLabel>
+                              <FormControl>
+                                <Input type="email" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="username"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>
+                                用户名 <span className="plasmo-text-gray-500 plasmo-text-xs">(可选)</span>
+                              </FormLabel>
+                              <FormControl>
+                                <Input {...field} placeholder="请输入用户名（选填）" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>密码 <span className="plasmo-text-[#ff4500]">*</span></FormLabel>
+                              <FormControl>
+                                <Input type="password" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="confirmPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>确认密码 <span className="plasmo-text-[#ff4500]">*</span></FormLabel>
+                              <FormControl>
+                                <Input type="password" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button type="submit" className="plasmo-w-full plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white">注册</Button>
+                      </form>
+                    </Form>
+                  </DialogContent>
+                </Dialog>
               </>
             )}
-          </UserInfo>
+          </div>
         </header>
 
-        <div className="grid-layout">
+        <div className="plasmo-grid plasmo-grid-cols-1 md:plasmo-grid-cols-[2fr,1fr] plasmo-gap-6 plasmo-flex-1">
           {/* 左侧面板 */}
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "8px",
-            padding: "24px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-            height: "fit-content"
-          }}>
-            <div style={{
-              borderLeft: "4px solid #ff4500",
-              paddingLeft: "12px",
-              marginBottom: "20px"
-            }}>
-              <h2 style={{
-                margin: 0,
-                fontSize: "18px",
-                color: "#333"
-              }}>简历解析</h2>
+          <div className="plasmo-bg-white plasmo-rounded-lg plasmo-p-6 plasmo-shadow-sm">
+            <div className="plasmo-border-l-4 plasmo-border-[#ff4500] plasmo-pl-3 plasmo-mb-5">
+              <h2 className="plasmo-text-lg plasmo-font-medium plasmo-text-[#333] plasmo-m-0">简历解析</h2>
             </div>
 
             {user ? (
-              <BitableForm onSubmit={handleBitableSubmit}>
-                <BitableTitle>
-                  <BitableTitleText>多维表格配置</BitableTitleText>
+              <form onSubmit={handleBitableSubmit} className="plasmo-mt-5 plasmo-p-4 plasmo-border plasmo-border-gray-200 plasmo-rounded-lg plasmo-bg-gray-50">
+                <div className="plasmo-flex plasmo-justify-between plasmo-items-center plasmo-mb-4">
+                  <h3 className="plasmo-text-base plasmo-font-medium plasmo-text-[#333] plasmo-m-0">多维表格配置</h3>
                   {!isEditing && (
-                    <BitableEditButton type="button" onClick={handleEdit}>
+                    <Button
+                      variant="outline"
+                      onClick={handleEdit}
+                      className="plasmo-text-[#ff4500] plasmo-border-[#ff4500] hover:plasmo-bg-[#fff5f2]"
+                    >
                       编辑
-                    </BitableEditButton>
+                    </Button>
                   )}
-                </BitableTitle>
+                </div>
 
                 {isEditing ? (
                   <>
-                    <BitableInput
+                    <Input
                       type="url"
                       name="bitableUrl"
                       value={tempBitableInfo.bitableUrl}
                       onChange={handleBitableChange}
                       placeholder="请输入多维表格链接"
+                      className="plasmo-mb-3"
                       required
                     />
-                    <BitableInput
+                    <Input
                       type="text"
                       name="bitableToken"
                       value={tempBitableInfo.bitableToken}
                       onChange={handleBitableChange}
                       placeholder="请输入多维表格授权码"
+                      className="plasmo-mb-3"
                       required
                     />
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <BitableButton type="submit" disabled={isSaving} style={{ flex: 1 }}>
+                    <div className="plasmo-flex plasmo-gap-2">
+                      <Button
+                        type="submit"
+                        disabled={isSaving}
+                        className="plasmo-flex-1"
+                      >
                         {isSaving ? '保存中...' : '保存'}
-                      </BitableButton>
-                      <BitableButton 
-                        type="button" 
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
                         onClick={handleCancel}
-                        style={{ 
-                          flex: 1,
-                          backgroundColor: '#e5e7eb',
-                          color: '#374151'
-                        }}
+                        className="plasmo-flex-1"
                       >
                         取消
-                      </BitableButton>
+                      </Button>
                     </div>
                   </>
                 ) : (
                   <>
-                    <BitableInfo>
-                      <BitableLabel>多维表格链接</BitableLabel>
-                      <BitableValue>{bitableInfo.bitableUrl || '未设置'}</BitableValue>
-                    </BitableInfo>
-                    <BitableInfo>
-                      <BitableLabel>多维表格授权码</BitableLabel>
-                      <BitableValue>
+                    <div className="plasmo-mb-3">
+                      <div className="plasmo-text-xs plasmo-text-gray-500 plasmo-mb-1">多维表格链接</div>
+                      <div className="plasmo-text-sm plasmo-text-gray-900 plasmo-break-all">
+                        {bitableInfo.bitableUrl || '未设置'}
+                      </div>
+                    </div>
+                    <div className="plasmo-mb-3">
+                      <div className="plasmo-text-xs plasmo-text-gray-500 plasmo-mb-1">多维表格授权码</div>
+                      <div className="plasmo-text-sm plasmo-text-gray-900">
                         {bitableInfo.bitableToken ? '••••••••' : '未设置'}
-                      </BitableValue>
-                    </BitableInfo>
+                      </div>
+                    </div>
                   </>
                 )}
 
                 {saveStatus && (
-                  <p style={{
-                    margin: '8px 0 0 0',
-                    fontSize: '14px',
-                    color: saveStatus.includes('成功') ? '#059669' : '#dc2626',
-                    textAlign: 'center'
-                  }}>
+                  <p className={`plasmo-mt-2 plasmo-text-sm plasmo-text-center ${
+                    saveStatus.includes('成功') ? 'plasmo-text-green-600' : 'plasmo-text-red-600'
+                  }`}>
                     {saveStatus}
                   </p>
                 )}
-              </BitableForm>
+              </form>
             ) : (
-              <div style={{
-                backgroundColor: "#f3f4f6",
-                padding: "16px",
-                borderRadius: "6px",
-                marginBottom: "16px"
-              }}>
-                <p style={{
-                  margin: 0,
-                  color: "#666"
-                }}>请先登录以配置多维表格</p>
+              <div className="plasmo-bg-gray-100 plasmo-p-4 plasmo-rounded-lg plasmo-mb-4">
+                <p className="plasmo-text-gray-600 plasmo-m-0">请先登录以配置多维表格</p>
               </div>
             )}
-
-            
           </div>
 
           {/* 右侧面板 */}
-          <div style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "24px",
-            height: "fit-content"
-          }}>
+          <div className="plasmo-flex plasmo-flex-col plasmo-gap-6">
             {/* 会员卡片 */}
-            <div style={{
-              backgroundColor: "#fff5f2",
-              borderRadius: "8px",
-              padding: "24px",
-              position: "relative",
-              overflow: "hidden"
-            }}>
-              <div style={{
-                display: "inline-block",
-                padding: "4px 12px",
-                backgroundColor: "#ff4500",
-                color: "white",
-                borderRadius: "4px",
-                fontSize: "14px",
-                marginBottom: "16px"
-              }}>
+            <div className="plasmo-bg-[#fff5f2] plasmo-rounded-lg plasmo-p-6 plasmo-relative plasmo-overflow-hidden">
+              <div className="plasmo-inline-block plasmo-px-3 plasmo-py-1 plasmo-bg-[#ff4500] plasmo-text-white plasmo-rounded plasmo-text-sm plasmo-mb-4">
                 高级标准版
               </div>
 
-              <div style={{
-                fontSize: "32px",
-                fontWeight: "bold",
-                color: "#333",
-                marginBottom: "24px"
-              }}>
-                ¥99.00 <span style={{ fontSize: "14px", fontWeight: "normal" }}>/人/年</span>
+              <div className="plasmo-text-3xl plasmo-font-bold plasmo-text-[#333] plasmo-mb-6">
+                ¥99.00 <span className="plasmo-text-sm plasmo-font-normal">/人/年</span>
               </div>
 
-              <ul style={{
-                listStyle: "none",
-                padding: 0,
-                margin: 0,
-                marginBottom: "24px"
-              }}>
+              <ul className="plasmo-list-none plasmo-p-0 plasmo-m-0 plasmo-mb-6">
                 {[
                   "智能解析简历关键信息",
                   "同步飞书多维度管理",
                   "AI评估推荐优质候选人"
                 ].map((feature, index) => (
-                  <li key={index} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    marginBottom: "8px",
-                    color: "#4b5563",
-                    fontSize: "14px"
-                  }}>
-                    <span style={{
-                      width: "6px",
-                      height: "6px",
-                      backgroundColor: "#ff4500",
-                      borderRadius: "50%",
-                      marginRight: "8px"
-                    }}></span>
+                  <li key={index} className="plasmo-flex plasmo-items-center plasmo-mb-2 plasmo-text-gray-600 plasmo-text-sm">
+                    <span className="plasmo-w-1.5 plasmo-h-1.5 plasmo-bg-[#ff4500] plasmo-rounded-full plasmo-mr-2"></span>
                     {feature}
                   </li>
                 ))}
               </ul>
 
-              <button style={{
-                width: "100%",
-                padding: "12px",
-                backgroundColor: "#ff4500",
-                color: "white",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: 500,
-                transition: "background-color 0.3s ease"
-              }}
-              className="orange-button">
+              <Button className="plasmo-w-full plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white">
                 立即购买
-              </button>
+              </Button>
             </div>
-
           </div>
         </div>
-
-        {/* 登录模态框 */}
-        <Modal isOpen={isLoginModalOpen}>
-          <ModalContent>
-            <ModalHeader>
-              <ModalTitle>用户登录</ModalTitle>
-              <CloseButton onClick={() => setIsLoginModalOpen(false)}>×</CloseButton>
-            </ModalHeader>
-
-            <Form onSubmit={handleLogin}>
-              <FormGroup>
-                <Label>邮箱</Label>
-                <Input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  required
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>密码</Label>
-                <Input
-                  type="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  required
-                />
-              </FormGroup>
-              <Button type="submit">登录</Button>
-            </Form>
-          </ModalContent>
-        </Modal>
-
-        {/* 注册模态框 */}
-        <Modal isOpen={isRegisterModalOpen}>
-          <ModalContent>
-            <ModalHeader>
-              <ModalTitle>用户注册</ModalTitle>
-              <CloseButton onClick={() => setIsRegisterModalOpen(false)}>×</CloseButton>
-            </ModalHeader>
-
-            <Form onSubmit={handleRegister}>
-              <FormGroup>
-                <Label>邮箱 <span style={{ color: '#ef4444' }}>*</span></Label>
-                <Input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  required
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>用户名 <span style={{ color: '#6b7280', fontSize: '12px' }}>(可选)</span></Label>
-                <Input
-                  type="text"
-                  name="username"
-                  value={formData.username}
-                  onChange={handleInputChange}
-                  placeholder="请输入用户名（选填）"
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>密码 <span style={{ color: '#ef4444' }}>*</span></Label>
-                <Input
-                  type="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  required
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>确认密码 <span style={{ color: '#ef4444' }}>*</span></Label>
-                <Input
-                  type="password"
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  required
-                />
-                {passwordError && (
-                  <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>
-                    {passwordError}
-                  </span>
-                )}
-              </FormGroup>
-              <Button type="submit">注册</Button>
-            </Form>
-          </ModalContent>
-        </Modal>
       </div>
     </div>
-  );
-};
+  )
+}
 
 export default HomePage 

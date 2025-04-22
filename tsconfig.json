@@ -10,10 +10,10 @@
   ],
   "compilerOptions": {
     "paths": {
-      "~*": [
-        "./src/*"
-      ]
+      "~*": ["./src/*"],
+      "@/*": ["./src/*"]
     },
-    "baseUrl": "."
+    "baseUrl": ".",
+    "types": ["react", "react-dom", "node"]
   }
 }

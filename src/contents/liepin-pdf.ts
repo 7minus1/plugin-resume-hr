@@ -1,5 +1,6 @@
+/// <reference types="chrome"/>
+
 import type { PlasmoCSConfig } from "plasmo"
-import { sendToBackground } from "@plasmohq/messaging"
 import { config as envConfig } from '../config/env';
 
 export const config: PlasmoCSConfig = {
@@ -10,12 +11,29 @@ export const config: PlasmoCSConfig = {
 
 console.log('Content script loaded')
 
+// 等待目标容器加载
+const waitForTargetContainer = (): Promise<HTMLElement> => {
+  return new Promise((resolve) => {
+    const checkContainer = () => {
+      const container = document.querySelector('.ant-lpt-modal-body') as HTMLElement
+      if (container) {
+        console.log('找到目标容器')
+        resolve(container)
+      } else {
+        console.log('目标容器未找到，等待100ms后重试')
+        setTimeout(checkContainer, 100)
+      }
+    }
+    checkContainer()
+  })
+}
+
 // 创建浮窗UI
-const createFloatingWindow = () => {
+const createFloatingWindow = async () => {
   console.log('Creating floating window')
   const floatingWindow = document.createElement('div')
   floatingWindow.style.cssText = `
-    position: fixed;
+    position: absolute;
     bottom: 20px;
     right: 20px;
     background: white;
@@ -24,10 +42,11 @@ const createFloatingWindow = () => {
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     z-index: 9999;
     display: none;
+    margin-right: 20px;
   `
   
   const title = document.createElement('div')
-  title.textContent = '简历上传助手'
+  title.textContent = '推鲤 AI 快聘'
   title.style.cssText = `
     font-size: 16px;
     font-weight: bold;
@@ -35,9 +54,9 @@ const createFloatingWindow = () => {
   `
   
   const uploadButton = document.createElement('button')
-  uploadButton.textContent = '上传简历'
+  uploadButton.textContent = '简历入库'
   uploadButton.style.cssText = `
-    background: #1890ff;
+    background: #ff4500;
     color: white;
     border: none;
     padding: 8px 16px;
@@ -56,8 +75,21 @@ const createFloatingWindow = () => {
   floatingWindow.appendChild(uploadButton)
   floatingWindow.appendChild(status)
   
-  document.body.appendChild(floatingWindow)
-  console.log('Floating window created and added to DOM')
+  // 等待目标容器加载
+  const targetContainer = await waitForTargetContainer()
+  console.log('目标容器已加载:', targetContainer)
+  
+  if (targetContainer) {
+    console.log('找到目标容器，添加浮窗')
+    targetContainer.style.position = 'relative'
+    targetContainer.appendChild(floatingWindow)
+  } else {
+    console.error('未找到目标容器，尝试添加到 body')
+    floatingWindow.style.position = 'fixed'
+    document.body.appendChild(floatingWindow)
+  }
+  
+  console.log('浮窗创建完成，当前显示状态:', floatingWindow.style.display)
   
   return {
     window: floatingWindow,
@@ -161,13 +193,13 @@ const checkAndHandlePdfLinks = (
   uploadButton: HTMLButtonElement,
   status: HTMLElement
 ) => {
-  console.log('Checking for PDF links in element:', element)
+  console.log('检查元素中的PDF链接:', element)
   const downloadLinks = element.querySelectorAll('a.download--SCDVl')
-  console.log('Found download links:', downloadLinks.length)
+  console.log('找到下载链接数量:', downloadLinks.length)
   
   downloadLinks.forEach((link) => {
     if (link instanceof HTMLAnchorElement) {
-      console.log('Processing download link:', link.href)
+      console.log('处理下载链接:', link.href)
       const pdfUrl = link.href
       const urlParams = new URLSearchParams(pdfUrl.split('?')[1])
       const encodedFileName = urlParams.get('dlFileName')
@@ -178,7 +210,7 @@ const checkAndHandlePdfLinks = (
       currentPdfUrl = pdfUrl
       currentFileName = fileName
       floatingWindow.style.display = 'block'
-      console.log('Showing floating window')
+      console.log('显示浮窗，当前URL:', currentPdfUrl, '文件名:', currentFileName)
       
       // 更新上传按钮点击事件
       uploadButton.onclick = async () => {
@@ -191,14 +223,14 @@ const checkAndHandlePdfLinks = (
 }
 
 // 监听页面变化，查找下载链接
-const observePage = () => {
-  console.log('Starting page observation')
-  const { window: floatingWindow, uploadButton, status } = createFloatingWindow()
+const observePage = async () => {
+  console.log('开始监听页面变化')
+  const { window: floatingWindow, uploadButton, status } = await createFloatingWindow()
   let currentPdfUrl: string | null = null
   let currentFileName: string | null = null
 
   // 立即检查现有元素
-  console.log('Checking existing elements')
+  console.log('检查现有元素')
   checkAndHandlePdfLinks(document.body, currentPdfUrl, currentFileName, floatingWindow, uploadButton, status)
 
   const observer = new MutationObserver((mutations) => {
@@ -224,7 +256,7 @@ const observePage = () => {
 console.log('Current document readyState:', document.readyState)
 if (document.readyState === 'loading') {
   console.log('Waiting for DOMContentLoaded')
-  document.addEventListener('DOMContentLoaded', observePage)
+  document.addEventListener('DOMContentLoaded', () => observePage())
 } else {
   console.log('DOM already loaded, running observePage immediately')
   observePage()
