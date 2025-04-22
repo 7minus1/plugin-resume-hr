@@ -8,7 +8,7 @@ import { config } from '../config/env';
 // 用户类型定义
 interface User {
   id: number;
-  email: string;
+  phoneNumber: string;
   username?: string;
   isActive?: boolean;
   createdAt?: string;
@@ -60,7 +60,7 @@ api.interceptors.response.use(
 );
 
 // 用户注册
-export const register = async (userData: { username?: string; email: string; password: string }) => {
+export const register = async (userData: { username?: string; phoneNumber: string; password: string }) => {
   try {
     const response = await api.post('/users/register', userData);
     return response.data;
@@ -70,7 +70,7 @@ export const register = async (userData: { username?: string; email: string; pas
 };
 
 // 用户登录
-export const login = async (credentials: { email: string; password: string }): Promise<LoginResponse> => {
+export const login = async (credentials: { phoneNumber: string; password: string }): Promise<LoginResponse> => {
   try {
     const response = await api.post('/users/login', credentials);
     console.log('Login response:', response.data);
@@ -99,9 +99,9 @@ export const login = async (credentials: { email: string; password: string }): P
 };
 
 // 验证码登录
-export const loginWithVerification = async (data: { email: string; password: string; code: string }): Promise<LoginResponse> => {
+export const loginWithVerification = async (data: { phoneNumber: string; code: string }): Promise<LoginResponse> => {
   try {
-    const response = await api.post('/users/login/verify', data);
+    const response = await api.post('/users/verify-code', data);
     console.log('Login with verification response:', response.data);
     
     // 保存token
@@ -128,9 +128,9 @@ export const loginWithVerification = async (data: { email: string; password: str
 };
 
 // 发送验证码
-export const sendVerificationCode = async (email: string) => {
+export const sendVerificationCode = async (phoneNumber: string) => {
   try {
-    const response = await api.post('/users/verification/send', { email });
+    const response = await api.post('/users/send-verification-code', { phoneNumber });
     return response.data;
   } catch (error) {
     throw error;
@@ -213,6 +213,34 @@ export const updateBitableInfo = async (data: {
 }> => {
   try {
     const response = await api.put('/users/bitable', data);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// 获取用户VIP状态
+export const getUserVipStatus = async (): Promise<{
+  isVip: boolean;
+  vipExpireDate?: string;
+  vipLevel?: number;
+}> => {
+  try {
+    const response = await api.get('/users/vip-status');
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// 获取用户剩余上传次数
+export const getUserUploadQuota = async (): Promise<{
+  uploadCount: number;
+  remainingCount: number;
+  isUnlimited: boolean;
+}> => {
+  try {
+    const response = await api.get('/users/upload-count');
     return response.data;
   } catch (error) {
     throw error;

@@ -1,10 +1,10 @@
 // 环境配置
 const ENV = {
   development: {
-    API_BASE_URL: 'https://plugin-backend-psi.vercel.app/api'
+    API_BASE_URL: 'https://plugins-backend.vercel.app/api'
   },
   production: {
-    API_BASE_URL: 'https://plugin-backend-psi.vercel.app/api'
+    API_BASE_URL: 'https://plugins-backend.vercel.app/api'
   }
 };
 
