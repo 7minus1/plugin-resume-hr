@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
 } from "../components/ui/dialog"
 import {
   Form,
@@ -45,6 +46,7 @@ const HomePage = () => {
   const [isRegisterOpen, setIsRegisterOpen] = useState(false)
   const [user, setUser] = useState(null)
   const [passwordError, setPasswordError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
   const [bitableInfo, setBitableInfo] = useState({
     bitableUrl: '',
     bitableToken: ''
@@ -117,19 +119,25 @@ const HomePage = () => {
 
   const handleLogin = async (values: z.infer<typeof formSchema>) => {
     try {
+      setIsLoading(true);
       const response = await login({
         phoneNumber: values.phoneNumber,
         password: values.password
-      })
-      setIsLoginOpen(false)
-      setUser(response.user)
-      form.reset()
-      setToast({ message: "登录成功", type: "success" })
-    } catch (error) {
-      console.error('登录失败:', error)
-      setToast({ message: "登录失败，请检查手机号和密码", type: "error" })
+      });
+      console.log('登录成功:', response);
+      setIsLoginOpen(false);
+      setUser(response.user);
+      form.reset();
+      setToast({ message: "登录成功", type: "success" });
+    } catch (error: any) {
+      console.error('11111登录失败:', error);
+      // 使用错误对象中的message，如果没有则使用默认消息
+      const errorMessage = error.message || "登录失败，请检查手机号和密码";
+      setToast({ message: errorMessage, type: "error" });
+    } finally {
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleRegister = async (values: z.infer<typeof formSchema>) => {
     try {
@@ -234,6 +242,7 @@ const HomePage = () => {
           message={toast.message}
           type={toast.type}
           onClose={() => setToast(null)}
+          duration={3000}
         />
       )}
       <div className="plasmo-p-6 plasmo-flex plasmo-flex-col">
@@ -272,7 +281,10 @@ const HomePage = () => {
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>用户登录</DialogTitle>
+                      <DialogTitle>登录</DialogTitle>
+                      <DialogDescription>
+                        请输入您的手机号和密码进行登录
+                      </DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
                       <form onSubmit={form.handleSubmit(handleLogin)} className="plasmo-space-y-4">
@@ -302,7 +314,12 @@ const HomePage = () => {
                             </FormItem>
                           )}
                         />
-                        <Button type="submit" className="plasmo-w-full plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white">登录</Button>
+                        <Button
+                          type="submit"
+                          className="plasmo-w-full"
+                          disabled={isLoading}>
+                          {isLoading ? "登录中..." : "登录"}
+                        </Button>
                       </form>
                     </Form>
                   </DialogContent>
@@ -314,7 +331,10 @@ const HomePage = () => {
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>用户注册</DialogTitle>
+                      <DialogTitle>注册</DialogTitle>
+                      <DialogDescription>
+                        请填写以下信息完成注册
+                      </DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
                       <form onSubmit={form.handleSubmit(handleRegister)} className="plasmo-space-y-4">

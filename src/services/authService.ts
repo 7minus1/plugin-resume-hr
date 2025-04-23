@@ -2,9 +2,6 @@
 import axios from 'axios';
 import { config } from '../config/env';
 
-// API基础URL
-// const API_BASE_URL = 'http://localhost:3000/api';
-
 // 用户类型定义
 interface User {
   id: number;
@@ -53,7 +50,7 @@ api.interceptors.response.use(
     if (error.response && error.response.status === 401) {
       // token过期，清除存储并重定向到登录页
       chrome.storage.local.remove(['access_token', 'user']);
-      window.location.href = '/login';
+      // window.location.href = '/tabs/home.html';
     }
     return Promise.reject(error);
   }
@@ -94,7 +91,18 @@ export const login = async (credentials: { phoneNumber: string; password: string
       user: userData
     };
   } catch (error) {
-    throw error;
+    if (axios.isAxiosError(error)) {
+      // 处理Axios错误
+      if (error.response) {
+        // 服务器返回了错误状态码
+        throw new Error(error.response.data?.message || '用户名或密码错误');
+      } else if (error.request) {
+        // 请求已发送但没有收到响应
+        throw new Error('无法连接到服务器，请检查网络连接');
+      }
+    }
+    // 处理其他错误
+    throw new Error('登录失败，请稍后重试');
   }
 };
 

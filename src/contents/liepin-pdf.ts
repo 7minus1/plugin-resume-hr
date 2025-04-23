@@ -181,7 +181,7 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
       throw new Error('未登录，请先登录')
     }
 
-    status.textContent = '正在上传...'
+    status.textContent = '正在入库...'
     console.log('准备发送请求，文件大小:', file.size, '文件名:', fileName)
 
     try {
@@ -203,7 +203,7 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
       console.log('服务器响应:', result)
 
       if (response.ok) {
-        status.textContent = '上传成功！'
+        status.textContent = '入库成功！'
         setTimeout(() => {
           status.textContent = ''
         }, 3000)
@@ -324,7 +324,7 @@ const checkAndHandlePdfLinks = (
       try {
         const success = await handlePdfUpload(foundPdfUrl, foundFileName, status)
         if (success) {
-          createToast('上传成功！')
+          createToast('入库成功！')
         }
       } catch (error) {
         console.error('上传失败:', error)

@@ -52,7 +52,7 @@ const Popup = () => {
     }
 
     setIsUploading(true)
-    setUploadStatus("正在上传...")
+    setUploadStatus("正在入库...")
 
     try {
       const formData = new FormData()
@@ -76,8 +76,8 @@ const Popup = () => {
       })
 
       if (response.ok) {
-        setUploadStatus("上传成功！")
-        setFile(null) // 上传成功后清除文件
+        setUploadStatus("入库成功！")
+        setFile(null) // 入库成功后清除文件
       } else {
         setUploadStatus("上传失败，请重试")
       }
