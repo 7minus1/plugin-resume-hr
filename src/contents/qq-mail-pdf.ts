@@ -247,8 +247,9 @@ const handlePdfAttachment = (attachmentElement: HTMLElement) => {
     }
   }
 
+  // 只使用一种方式绑定事件，避免重复触发
   uploadButton.addEventListener('click', handleClick, true)
-  uploadButton.onclick = handleClick
+  // uploadButton.onclick = handleClick  // 注释掉这行，避免重复绑定
 
   attachmentElement.appendChild(floatingWindow)
   console.log('浮窗已添加到附件元素')

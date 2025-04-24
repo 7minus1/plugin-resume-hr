@@ -72,6 +72,8 @@ const Popup = () => {
         headers: {
           'Authorization': `Bearer ${token}`
         },
+        credentials: 'include',
+        mode: 'cors',
         body: formData
       })
 

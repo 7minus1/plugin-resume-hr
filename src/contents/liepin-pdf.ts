@@ -20,8 +20,8 @@ const waitForTargetContainer = (): Promise<HTMLElement> => {
         console.log('找到目标容器')
         resolve(container)
       } else {
-        console.log('目标容器未找到，等待100ms后重试')
-        setTimeout(checkContainer, 1000)
+        console.log('目标容器未找到，等待1000ms后重试')
+        setTimeout(checkContainer, 10000)
       }
     }
     checkContainer()
@@ -160,7 +160,7 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
     clearTimeout(timeout)
     
     if (!pdfResponse.ok) {
-      status.textContent = ''
+      status.textContent = '获取PDF失败'
       throw new Error('获取PDF失败')
     }
     
@@ -177,7 +177,7 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
     const token = result.access_token
 
     if (!token) {
-      status.textContent = ''
+      status.textContent = '未登录，请先登录'
       throw new Error('未登录，请先登录')
     }
 
@@ -195,6 +195,8 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
         headers: {
           'Authorization': `Bearer ${token}`
         },
+        credentials: 'include',
+        mode: 'cors',
         body: formData
       })
 
@@ -204,26 +206,24 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
 
       if (response.ok) {
         status.textContent = '入库成功！'
-        setTimeout(() => {
-          status.textContent = ''
-        }, 3000)
         return true
       } else {
         // 处理服务器返回的错误信息
-        status.textContent = ''
-        throw new Error(result.message || '上传失败')
+        status.textContent = '入库失败!'
+        throw new Error(result.message || '入库失败')
       }
     } catch (error) {
       console.error('上传请求失败:', error)
-      status.textContent = ''
+      status.textContent = '入库失败!'
       throw error
     }
   } catch (error) {
     console.error('Error in handlePdfUpload:', error)
-    status.textContent = ''
     if (error.name === 'AbortError') {
+      status.textContent = '请求超时，请重试'
       throw new Error('请求超时，请重试')
     } else {
+      status.textContent = '入库失败!'
       throw error
     }
   }
@@ -266,6 +266,15 @@ const checkAndHandlePdfLinks = (
 ) => {
   console.log('检查元素中的PDF链接:', element)
   
+  // 检查浮窗是否正在处理中
+  const isProcessing = floatingWindow.getAttribute('data-processing') === 'true'
+  if (isProcessing) {
+    console.log('浮窗正在处理中，不重新创建')
+    // 确保浮窗仍然显示
+    floatingWindow.style.display = 'block'
+    return
+  }
+  
   // 首先检查元素本身是否是下载链接
   let foundPdfUrl: string | null = null
   let foundFileName: string | null = null
@@ -288,10 +297,12 @@ const checkAndHandlePdfLinks = (
     const downloadLinks = element.querySelectorAll('a.download--SCDVl')
     console.log('找到下载链接数量:', downloadLinks.length)
     
-    downloadLinks.forEach((link) => {
-      if (link instanceof HTMLAnchorElement) {
-        console.log('处理下载链接:', link.href)
-        const pdfUrl = link.href
+    // 只处理第一个链接
+    if (downloadLinks.length > 0) {
+      const firstLink = downloadLinks[0]
+      if (firstLink instanceof HTMLAnchorElement) {
+        console.log('处理第一个下载链接:', firstLink.href)
+        const pdfUrl = firstLink.href
         const urlParams = new URLSearchParams(pdfUrl.split('?')[1])
         const encodedFileName = urlParams.get('dlFileName')
         const baseFileName = encodedFileName ? decodeURIComponent(encodedFileName) : 'resume'
@@ -301,7 +312,7 @@ const checkAndHandlePdfLinks = (
         foundPdfUrl = pdfUrl
         foundFileName = fileName
       }
-    })
+    }
   }
 
   // 只有在找到PDF链接时才显示浮窗和设置上传按钮事件
@@ -309,11 +320,48 @@ const checkAndHandlePdfLinks = (
     console.log('找到PDF链接，显示浮窗，URL:', foundPdfUrl, '文件名:', foundFileName)
     floatingWindow.style.display = 'block'
     
-    // 移除所有现有的事件监听器
-    const newUploadButton = uploadButton.cloneNode(true) as HTMLButtonElement
-    if (uploadButton.parentNode) {
-      uploadButton.parentNode.replaceChild(newUploadButton, uploadButton)
-    }
+    // 清空浮窗内容
+    floatingWindow.innerHTML = ''
+    
+    // 创建标题
+    const title = document.createElement('div')
+    title.textContent = '推鲤 AI 快聘'
+    title.style.cssText = `
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      pointer-events: none;
+    `
+    
+    // 创建全新的按钮
+    const finalButton = document.createElement('button')
+    finalButton.textContent = '简历入库'
+    finalButton.style.cssText = `
+      background: #ff4500;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      pointer-events: auto;
+      position: relative;
+      z-index: 10000;
+    `
+    finalButton.type = 'button'
+    
+    // 创建新的status元素
+    const newStatus = document.createElement('div')
+    newStatus.style.cssText = `
+      margin-top: 10px;
+      font-size: 14px;
+      color: #666;
+      pointer-events: none;
+    `
+    
+    // 按顺序添加元素到浮窗
+    floatingWindow.appendChild(title)
+    floatingWindow.appendChild(finalButton)
+    floatingWindow.appendChild(newStatus)
     
     // 添加新的事件监听器
     const handleClick = async (event: MouseEvent) => {
@@ -321,45 +369,62 @@ const checkAndHandlePdfLinks = (
       event.preventDefault()
       event.stopPropagation()
       console.log('开始上传:', foundPdfUrl, foundFileName)
+      
+      // 设置处理中标志
+      floatingWindow.setAttribute('data-processing', 'true')
+      
+      // 禁用按钮，防止重复点击
+      finalButton.disabled = true
+      finalButton.style.opacity = '0.6'
+      finalButton.style.cursor = 'not-allowed'
+      
       try {
-        const success = await handlePdfUpload(foundPdfUrl, foundFileName, status)
+        const success = await handlePdfUpload(foundPdfUrl, foundFileName, newStatus)
         if (success) {
           createToast('入库成功！')
+          // 延迟清空状态文本，给用户足够时间看到成功消息
+          setTimeout(() => {
+            newStatus.textContent = ''
+            // 恢复按钮状态
+            finalButton.disabled = false
+            finalButton.style.opacity = '1'
+            finalButton.style.cursor = 'pointer'
+            // 清除处理中标志
+            floatingWindow.setAttribute('data-processing', 'false')
+          }, 3000)
         }
       } catch (error) {
-        console.error('上传失败:', error)
-        createToast(`上传失败：${error.message}`)
+        console.error('入库失败:', error)
+        createToast(`入库失败：${error.message}`)
+        // 延迟清空错误状态
+        setTimeout(() => {
+          newStatus.textContent = ''
+          // 恢复按钮状态
+          finalButton.disabled = false
+          finalButton.style.opacity = '1'
+          finalButton.style.cursor = 'pointer'
+          // 清除处理中标志
+          floatingWindow.setAttribute('data-processing', 'false')
+        }, 3000)
       }
     }
     
-    // 移除所有现有的事件监听器
-    newUploadButton.replaceWith(newUploadButton.cloneNode(true))
-    const finalButton = floatingWindow.querySelector('button') as HTMLButtonElement
-    
-    // 添加新的事件监听器
+    // 只添加一次事件监听器
     finalButton.addEventListener('click', handleClick, true)
-    finalButton.onclick = handleClick
     
     // 确保按钮可点击
     finalButton.style.pointerEvents = 'auto'
     finalButton.style.position = 'relative'
     finalButton.style.zIndex = '10000'
     
-    // 直接绑定点击事件到浮窗
-    floatingWindow.onclick = (event) => {
-      console.log('浮窗被点击')
-      event.stopPropagation()
-      
-      // 检查点击的元素是否是按钮或其子元素
-      const target = event.target as HTMLElement
-      if (target === finalButton || target.closest('button') === finalButton) {
-        console.log('点击了上传按钮')
-        handleClick(event as MouseEvent)
-      }
-    }
+    // 更新status引用
+    status = newStatus
   } else {
-    console.log('未找到PDF链接，隐藏浮窗')
-    floatingWindow.style.display = 'none'
+    // 只有在不处理中时才隐藏浮窗
+    if (!isProcessing) {
+      console.log('未找到PDF链接，隐藏浮窗')
+      floatingWindow.style.display = 'none'
+    }
   }
 }
 
