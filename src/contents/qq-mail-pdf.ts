@@ -141,7 +141,9 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
     try {
       const formData = new FormData()
       formData.append('file', file)
-
+      formData.append('deliveryChannel', '企业邮箱')
+      formData.append('deliveryPosition', '未知岗位')
+      
       console.log('发送请求到服务器...')
       const response = await fetch(`${API_BASE_URL}/resume/upload`, {
         method: 'POST',

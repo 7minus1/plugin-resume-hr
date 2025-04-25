@@ -57,6 +57,8 @@ const Popup = () => {
     try {
       const formData = new FormData()
       formData.append("file", file)
+      formData.append("deliveryChannel", "插件上传")
+      formData.append("deliveryPosition", "未知岗位")
 
       // 获取认证令牌
       const result = await chrome.storage.local.get(['access_token']);
