@@ -312,20 +312,15 @@ const convertOnlineResumeToFile = async (status: HTMLElement): Promise<File | nu
     status.textContent = '正在处理在线简历...';
     
     // 查找简历容器
-    const resumeContainer = document.querySelector('.resume-detail') as HTMLElement;
+    const resumeContainer = document.querySelector('.resume-box') as HTMLElement;
     if (!resumeContainer) {
       console.error('找不到简历容器');
       status.textContent = '找不到简历内容';
-      return createFallbackPdf('未知人名', '找不到简历内容');
+      return null;
     }
     
     try {
-      // 不再需要加载库文件，直接使用导入的库
-      console.log('使用导入的jsPDF和html2canvas库');
       status.textContent = '正在生成PDF...';
-      
-      // 提取姓名用于文件名
-      const name = resumeContainer.querySelector('.geek-name')?.textContent?.trim() || '未知人名';
       
       // 创建测试PDF并返回
       console.log("生成包含简历内容的测试PDF");
@@ -336,20 +331,13 @@ const convertOnlineResumeToFile = async (status: HTMLElement): Promise<File | nu
         format: 'a4'
       });
       
-      testPdf.text(`${name} - 测试PDF生成成功`, 20, 20);
-      testPdf.text(`生成时间: ${new Date().toLocaleString()}`, 20, 30);
-      testPdf.text('这是一个用于测试jspdf和html2canvas引入是否成功的文件', 20, 40);
-      
       // 尝试将HTML渲染到PDF
       try {
         console.log('尝试使用html2canvas渲染简历容器');
         status.textContent = '正在渲染简历...';
-        
-        // 先获取简历中的关键信息
-        const name = resumeContainer.querySelector('.geek-name')?.textContent?.trim() || '未知人名';
-        
+
         // 记录要渲染的元素
-        const infoSection = resumeContainer.querySelector('.geek-info-box') || resumeContainer;
+        const infoSection = resumeContainer;
         console.log('准备渲染的元素:', infoSection);
         
         // 渲染前记录元素尺寸和位置
@@ -362,17 +350,17 @@ const convertOnlineResumeToFile = async (status: HTMLElement): Promise<File | nu
         
         // 使用更多选项提高渲染成功率
         const canvas = await html2canvas(infoSection as HTMLElement, {
-          scale: 2, // 更高的缩放比例提高质量
+          scale: 2, // 提高缩放比例以提高质量
           logging: true, // 开启日志
           useCORS: true, // 允许跨域图像
           allowTaint: true, // 允许污染canvas
           backgroundColor: '#ffffff', // 白色背景
           windowWidth: window.innerWidth,
           windowHeight: window.innerHeight,
-          scrollX: window.scrollX,
-          scrollY: window.scrollY,
-          x: rect.left,
-          y: rect.top,
+          scrollX: 0, // 不使用window.scrollX
+          scrollY: 0, // 不使用window.scrollY
+          x: 0, // 从元素的左边缘开始
+          y: 0, // 从元素的上边缘开始
           width: rect.width,
           height: rect.height
         });
@@ -389,50 +377,78 @@ const convertOnlineResumeToFile = async (status: HTMLElement): Promise<File | nu
         const pageWidth = 210;
         const pageHeight = 297;
         const margin = 10;
-        const maxWidth = pageWidth - 2 * margin;
-        const maxHeight = 200; // 限制图像高度，留出空间给其他内容
+        const contentWidth = pageWidth - 2 * margin;
+        const contentHeight = pageHeight - 2 * margin;
         
-        // 计算比例
-        const ratio = canvas.width / canvas.height;
-        let imgWidth = maxWidth;
-        let imgHeight = imgWidth / ratio;
+        // 计算canvas与PDF的缩放比例
+        const scale = contentWidth / canvas.width;
         
-        if (imgHeight > maxHeight) {
-          imgHeight = maxHeight;
-          imgWidth = imgHeight * ratio;
-        }
+        // 计算按比例缩放后的canvas高度
+        const scaledHeight = canvas.height * scale;
         
-        // 添加到PDF的固定位置
-        testPdf.addImage(imgData, 'JPEG', margin, 50, imgWidth, imgHeight);
-        testPdf.setFontSize(12);
-        testPdf.text('上面是通过html2canvas渲染的简历内容预览', margin, 50 + imgHeight + 10);
+        console.log('计算缩放比例:', {
+          scale,
+          contentWidth,
+          scaledHeight,
+          totalPages: Math.ceil(scaledHeight / contentHeight)
+        });
         
-        // 添加一些简历文本内容做备份
-        testPdf.setFontSize(10);
-        
-        // 提取简历文本
-        let resumeText = '';
-        try {
-          // 提取基本信息
-          const infoLabels = resumeContainer.querySelectorAll('.info-labels .label-text');
-          infoLabels.forEach(label => {
-            if (label.textContent) {
-              resumeText += label.textContent.trim() + '; ';
+        // 多页处理
+        if (scaledHeight <= contentHeight) {
+          // 单页足够
+          testPdf.addImage(imgData, 'JPEG', margin, margin, contentWidth, scaledHeight);
+        } else {
+          // 需要多页处理
+          // 计算每页可以显示的canvas高度
+          const pageHeightInPx = contentHeight / scale;
+          
+          let remainingHeight = canvas.height;
+          let yOffset = 0;
+          
+          // 循环添加页面
+          while (remainingHeight > 0) {
+            // 创建当前页的canvas切片
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // 确定当前页的高度
+            const currentPageHeight = Math.min(pageHeightInPx, remainingHeight);
+            
+            // 设置临时canvas的尺寸
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = currentPageHeight;
+            
+            // 将主canvas对应部分绘制到临时canvas
+            tempCtx.drawImage(
+              canvas,
+              0, yOffset,                  // 源图像的起始坐标
+              canvas.width, currentPageHeight, // a源图像的宽度和高度
+              0, 0,                        // 目标canvas的起始坐标
+              canvas.width, currentPageHeight  // 目标canvas的宽度和高度
+            );
+            
+            // 将临时canvas转为图像并添加到PDF
+            const pageImgData = tempCanvas.toDataURL('image/jpeg', 0.9);
+            
+            // 添加图像到PDF
+            testPdf.addImage(
+              pageImgData, 
+              'JPEG', 
+              margin, margin, 
+              contentWidth, currentPageHeight * scale
+            );
+            
+            // 更新剩余高度和偏移量
+            remainingHeight -= currentPageHeight;
+            yOffset += currentPageHeight;
+            
+            // 如果还有内容，添加新页
+            if (remainingHeight > 0) {
+              testPdf.addPage();
             }
-          });
-          
-          // 添加到PDF
-          const textY = 50 + imgHeight + 20;
-          
-          // 分段写入避免超出页面
-          const lines = resumeText.match(/.{1,80}/g) || [];
-          lines.forEach((line, index) => {
-            testPdf.text(line, margin, textY + index * 5);
-          });
-        } catch (textError) {
-          console.error('提取文本失败:', textError);
-          testPdf.text('提取文本失败: ' + textError.message, margin, 50 + imgHeight + 20);
+          }
         }
+        
       } catch (renderError) {
         console.error('html2canvas渲染失败:', renderError);
         
@@ -443,40 +459,12 @@ const convertOnlineResumeToFile = async (status: HTMLElement): Promise<File | nu
           name: renderError.name
         });
         
-        // 在PDF中记录错误
-        testPdf.setTextColor(255, 0, 0); // 红色
-        testPdf.setFontSize(12);
-        testPdf.text('html2canvas渲染失败: ' + renderError.message, 20, 60);
-        testPdf.setTextColor(0, 0, 0); // 恢复黑色
-        
-        // 尝试直接提取文本作为备选
-        testPdf.setFontSize(10);
-        testPdf.text('以下是从简历中提取的文本信息:', 20, 80);
-        
-        try {
-          const text = resumeContainer.innerText.substring(0, 2000);
-          const lines = text.split('\n');
-          
-          // 限制行数
-          const maxLines = 40;
-          lines.slice(0, maxLines).forEach((line, i) => {
-            if (line.trim()) {
-              testPdf.text(line.trim().substring(0, 100), 20, 90 + i * 5);
-            }
-          });
-          
-          if (lines.length > maxLines) {
-            testPdf.text('... (更多内容已省略)', 20, 90 + maxLines * 5);
-          }
-        } catch (extractError) {
-          testPdf.text('提取简历文本也失败: ' + extractError.message, 20, 90);
-        }
       }
       
       // 转换成文件
       const pdfBlob = testPdf.output('blob');
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const fileName = `${name}_测试PDF_${timestamp}.pdf`;
+      const fileName = `$测试PDF_${timestamp}.pdf`;
       
       const file = new File([pdfBlob], fileName, {
         type: 'application/pdf',
@@ -492,203 +480,17 @@ const convertOnlineResumeToFile = async (status: HTMLElement): Promise<File | nu
       status.textContent = '生成PDF失败';
       
       // 创建错误报告PDF
-      return createFallbackPdf('测试失败', `生成PDF失败: ${importError.message}`);
+      return null;
     }
     
   } catch (error) {
     console.error('转换在线简历时出错:', error);
     status.textContent = '处理简历失败';
     
-    return createFallbackPdf('未知人名', '处理简历时出错');
+    return null;
   }
 };
 
-// 创建最基本的有保障的PDF
-function createFallbackPdf(name: string, message: string): File {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const fileName = `${name}_简历_${timestamp}.pdf`;
-  
-  // 保证有效的PDF文件，最简单的结构
-  const safePdf = `%PDF-1.4
-1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
-2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
-3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Resources<<
-/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>>>/Contents 4 0 R/Parent 2 0 R>>endobj
-4 0 obj<</Length 100>>stream
-BT
-/F1 24 Tf
-50 700 Td (简历) Tj
-/F1 12 Tf
-50 670 Td (姓名: ${name.replace(/[^\x20-\x7E\u4E00-\u9FFF]/g, ' ')}) Tj
-50 650 Td (日期: ${new Date().toISOString().split('T')[0]}) Tj
-50 630 Td (${message.replace(/[^\x20-\x7E\u4E00-\u9FFF]/g, ' ')}) Tj
-ET
-endstream
-endobj
-xref
-0 5
-0000000000 65535 f
-0000000009 00000 n
-0000000052 00000 n
-0000000101 00000 n
-0000000249 00000 n
-trailer<</Size 5/Root 1 0 R>>
-startxref
-349
-%%EOF`;
-  
-  const pdfBlob = new Blob([safePdf], { type: 'application/pdf' });
-  return new File([pdfBlob], fileName, {
-    type: 'application/pdf',
-    lastModified: new Date().getTime()
-  });
-}
-
-// 生成包含文本的PDF
-function generateTextPdf(name: string, content: string): string {
-  // 创建一个最小但有效的PDF文件
-  // PDF规范1.7格式的最简单示例，确保不会有乱码
-  
-  // 简化内容处理，移除特殊字符和换行符，避免编码问题
-  const safeContent = content
-    .replace(/[^\x20-\x7E\u4E00-\u9FFF]/g, ' ') // 只保留基本ASCII和中文字符
-    .replace(/\r?\n/g, ' ')
-    .replace(/\s+/g, ' ')
-    .substring(0, 2000); // 限制文本长度
-    
-  const safeContentLines = [];
-  // 每行最多50个字符
-  for (let i = 0; i < safeContent.length; i += 50) {
-    safeContentLines.push(safeContent.substring(i, i + 50));
-  }
-  
-  const safeName = name.replace(/[^\x20-\x7E\u4E00-\u9FFF]/g, ' ');
-  const currentDate = new Date().toISOString().split('T')[0];
-  
-  // PDF基本结构 - 非常简单的文本内容
-  const pdfHeader = `%PDF-1.7
-1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
-endobj
-2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
-endobj
-3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
-endobj`;
-
-  // 创建PDF内容流 - 基本文本格式
-  let pdfContentStream = `BT
-/F1 16 Tf
-50 750 Td
-(${safeName} - 个人简历) Tj
-/F1 12 Tf
-0 -30 Td
-(生成日期: ${currentDate}) Tj
-`;
-
-  // 逐行添加简历内容
-  let yOffset = 60;
-  for (const line of safeContentLines) {
-    if (yOffset > 700) break; // 防止内容超出页面
-    pdfContentStream += `0 -15 Td
-(${line}) Tj
-`;
-    yOffset += 15;
-  }
-  
-  // 结束文本块
-  pdfContentStream += `ET`;
-  
-  // 计算内容流长度
-  const contentLength = pdfContentStream.length;
-  
-  // 添加内容对象
-  const pdfContent = `4 0 obj
-<< /Length ${contentLength} >>
-stream
-${pdfContentStream}
-endstream
-endobj`;
-
-  // 添加字体对象和交叉引用表
-  const pdfFooter = `5 0 obj
-<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
-endobj
-xref
-0 6
-0000000000 65535 f
-0000000010 00000 n
-0000000059 00000 n
-0000000116 00000 n
-0000000234 00000 n
-0000000${234 + contentLength + 40} 00000 n
-trailer
-<< /Size 6 /Root 1 0 R >>
-startxref
-0000000${234 + contentLength + 160}
-%%EOF`;
-
-  // 将所有部分组合在一起
-  return pdfHeader + '\n' + pdfContent + '\n' + pdfFooter;
-}
-
-// 创建纯文本PDF文件
-function createTextOnlyPdfFile(name: string): File {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const fileName = `${name}_简历_${timestamp}.pdf`;
-  
-  // 创建一个简单的文本PDF
-  const simplePdf = `%PDF-1.7
-1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
-endobj
-2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
-endobj
-3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
-endobj
-4 0 obj
-<< /Length 142 >>
-stream
-BT
-/F1 24 Tf
-50 700 Td
-(个人简历) Tj
-/F1 16 Tf
-50 650 Td
-(姓名: ${name.replace(/[^\x20-\x7E\u4E00-\u9FFF]/g, ' ')}) Tj
-50 620 Td
-(日期: ${new Date().toISOString().split('T')[0]}) Tj
-50 590 Td
-(简历内容无法渲染，请尝试重新上传) Tj
-ET
-endstream
-endobj
-5 0 obj
-<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
-endobj
-xref
-0 6
-0000000000 65535 f
-0000000010 00000 n
-0000000059 00000 n
-0000000116 00000 n
-0000000234 00000 n
-0000000426 00000 n
-trailer
-<< /Size 6 /Root 1 0 R >>
-startxref
-512
-%%EOF`;
-  
-  const textBlob = new Blob([simplePdf], { type: 'application/pdf' });
-  return new File([textBlob], fileName, {
-    type: 'application/pdf',
-    lastModified: new Date().getTime()
-  });
-}
 
 // 辅助函数：将Data URL转换为Blob
 function dataURLtoBlob(dataurl: string): Blob {
@@ -1198,40 +1000,40 @@ const main = async () => {
         }
       }, 2000); // 增加等待时间，确保有足够时间捕获URL
     } else if (currentResumeType === 'online') {
-      // 不处理在线简历
-      // 显示提示，暂不支持处理在线简历
-      createToast('暂不支持处理在线简历');
-      setIsProcessing(false);
-      // // 处理在线简历
-      // console.log('处理在线简历，开始转换为PDF');
-      // createToast('正在处理在线简历...');
+      // // 不处理在线简历
+      // // 显示提示，暂不支持处理在线简历
+      // createToast('暂不支持处理在线简历');
+      // setIsProcessing(false);
+      // 处理在线简历
+      console.log('处理在线简历，开始转换为PDF');
+      createToast('正在处理在线简历...');
       
-      // try {
-      //   // 将在线简历转换为PDF文件
-      //   const resumeFile = await convertOnlineResumeToFile(status);
+      try {
+        // 将在线简历转换为PDF文件
+        const resumeFile = await convertOnlineResumeToFile(status);
         
-      //   if (resumeFile) {
-      //     // 获取职位信息
-      //     const currentJobTitle = getJobTitle();
+        if (resumeFile) {
+          // 获取职位信息
+          const currentJobTitle = getJobTitle();
           
-      //     // 上传处理后的简历文件
-      //     const success = await handleOnlineResumeUpload(resumeFile, currentJobTitle, status);
+          // 上传处理后的简历文件
+          const success = await handleOnlineResumeUpload(resumeFile, currentJobTitle, status);
           
-      //     if (success) {
-      //       createToast('入库成功！');
-      //     }
-      //   } else {
-      //     createToast('无法处理在线简历，请确保简历内容已完全加载');
-      //   }
-      // } catch (error) {
-      //   console.error('处理在线简历失败:', error);
-      //   createToast(`入库失败：${error.message}`);
-      // } finally {
-      //   // 延迟恢复按钮状态
-      //   setTimeout(() => {
-      //     setIsProcessing(false);
-      //   }, 3000);
-      // }
+          if (success) {
+            createToast('入库成功！');
+          }
+        } else {
+          createToast('无法处理在线简历，请确保简历内容已完全加载');
+        }
+      } catch (error) {
+        console.error('处理在线简历失败:', error);
+        createToast(`入库失败：${error.message}`);
+      } finally {
+        // 延迟恢复按钮状态
+        setTimeout(() => {
+          setIsProcessing(false);
+        }, 3000);
+      }
     }
   });
   
