@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import "../style.css"
-import { verifyCode, getUserProfile, logout, getBitableInfo, updateBitableInfo, getUserVipStatus, getUserUploadQuota, sendVerificationCode } from "../services/authService"
+import { login, register, getUserProfile, logout, getBitableInfo, updateBitableInfo, getUserVipStatus, getUserUploadQuota } from "../services/authService"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
@@ -12,7 +12,6 @@ import {
   DialogTitle,
   DialogTrigger,
   DialogDescription,
-  DialogFooter,
 } from "../components/ui/dialog"
 import {
   Form,
@@ -27,15 +26,26 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { Toast } from "../components/ui/toast"
 
-// 更新表单验证规则
 const formSchema = z.object({
   phoneNumber: z.string().regex(/^1[3-9]\d{9}$/, "请输入有效的手机号码"),
-  code: z.string().min(4, "请输入有效的验证码").max(6, "请输入有效的验证码"),
+  password: z.string().min(8, "密码至少需要8个字符"),
+  username: z.string().optional(),
+  confirmPassword: z.string().optional(),
+}).refine((data) => {
+  if (data.confirmPassword) {
+    return data.password === data.confirmPassword
+  }
+  return true
+}, {
+  message: "两次输入的密码不一致",
+  path: ["confirmPassword"],
 })
 
 const HomePage = () => {
   const [isLoginOpen, setIsLoginOpen] = useState(false)
+  const [isRegisterOpen, setIsRegisterOpen] = useState(false)
   const [user, setUser] = useState(null)
+  const [passwordError, setPasswordError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [bitableInfo, setBitableInfo] = useState({
     bitableUrl: '',
@@ -59,14 +69,14 @@ const HomePage = () => {
     remainingCount: number;
     isUnlimited: boolean;
   } | null>(null)
-  const [isSendingCode, setIsSendingCode] = useState(false)
-  const [countdown, setCountdown] = useState(0)
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       phoneNumber: "",
-      code: "",
+      password: "",
+      username: "",
+      confirmPassword: "",
     },
   })
 
@@ -81,37 +91,6 @@ const HomePage = () => {
       loadUserUploadQuota()
     }
   }, [user])
-
-  // 添加倒计时逻辑
-  useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => {
-        setCountdown(countdown - 1)
-      }, 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [countdown])
-
-  // 添加自动关闭Toast的逻辑
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => {
-        setToast(null)
-      }, 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [toast])
-
-  // 添加表单开启关闭的处理
-  useEffect(() => {
-    if (isLoginOpen) {
-      // 当对话框打开时重置表单
-      form.reset({
-        phoneNumber: "",
-        code: ""
-      })
-    }
-  }, [isLoginOpen, form])
 
   const checkAuthStatus = async () => {
     try {
@@ -138,48 +117,41 @@ const HomePage = () => {
     }
   }
 
-  const handleSendVerificationCode = async () => {
-    const phoneNumber = form.getValues('phoneNumber')
-    const phoneNumberValid = /^1[3-9]\d{9}$/.test(phoneNumber)
-    
-    if (!phoneNumberValid) {
-      form.setError('phoneNumber', { 
-        type: 'manual', 
-        message: '请输入有效的手机号码'
-      })
-      return
-    }
-    
+  const handleLogin = async (values: z.infer<typeof formSchema>) => {
     try {
-      setIsSendingCode(true)
-      await sendVerificationCode(phoneNumber)
-      setToast({ message: "验证码已发送", type: "success" })
-      // 设置60秒倒计时
-      setCountdown(60)
-    } catch (error: any) {
-      const errorMessage = error.message || "发送验证码失败，请重试"
-      setToast({ message: errorMessage, type: "error" })
-    } finally {
-      setIsSendingCode(false)
-    }
-  }
-
-  const handleVerifyCode = async (values: z.infer<typeof formSchema>) => {
-    try {
-      setIsLoading(true)
-      const response = await verifyCode({
+      setIsLoading(true);
+      const response = await login({
         phoneNumber: values.phoneNumber,
-        code: values.code
-      })
-      setIsLoginOpen(false)
-      setUser(response.user)
-      form.reset()
-      setToast({ message: "登录成功", type: "success" })
+        password: values.password
+      });
+      console.log('登录成功:', response);
+      setIsLoginOpen(false);
+      setUser(response.user);
+      form.reset();
+      setToast({ message: "登录成功", type: "success" });
     } catch (error: any) {
-      const errorMessage = error.message || "验证码错误或已过期"
-      setToast({ message: errorMessage, type: "error" })
+      console.error('11111登录失败:', error);
+      // 使用错误对象中的message，如果没有则使用默认消息
+      const errorMessage = error.message || "登录失败，请检查手机号和密码";
+      setToast({ message: errorMessage, type: "error" });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegister = async (values: z.infer<typeof formSchema>) => {
+    try {
+      await register({
+        phoneNumber: values.phoneNumber,
+        password: values.password,
+        username: values.username || undefined
+      })
+      setIsRegisterOpen(false)
+      setToast({ message: "注册成功，请登录", type: "success" })
+      form.reset()
+    } catch (error) {
+      console.error('注册失败:', error)
+      setToast({ message: "注册失败，请重试", type: "error" })
     }
   }
 
@@ -266,14 +238,12 @@ const HomePage = () => {
   return (
     <div className="plasmo-min-h-screen plasmo-bg-[#f5f7fa] plasmo-font-sans">
       {toast && (
-        <div
-          className="plasmo-fixed plasmo-top-5 plasmo-left-1/2 plasmo-transform plasmo--translate-x-1/2 plasmo-z-[10001] plasmo-px-6 plasmo-py-3 plasmo-rounded-lg plasmo-shadow-lg plasmo-transition-all plasmo-duration-300 plasmo-ease-in-out plasmo-min-w-[200px] plasmo-text-center"
-          style={{
-            backgroundColor: toast.type === 'success' ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 0, 0, 0.8)',
-            color: 'white'
-          }}>
-          {toast.message}
-        </div>
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+          duration={3000}
+        />
       )}
       <div className="plasmo-p-6 plasmo-flex plasmo-flex-col">
         <header className="plasmo-flex plasmo-items-center plasmo-mb-6">
@@ -286,13 +256,18 @@ const HomePage = () => {
               <>
                 <div className="plasmo-flex plasmo-flex-col plasmo-items-end plasmo-mr-2">
                   <span className="plasmo-text-[#4b5563] plasmo-text-sm">
-                    欢迎，{ user.phoneNumber }
+                    欢迎，{user.username || user.phoneNumber}
                   </span>
                   {vipStatus && (
                     <span className={`plasmo-text-xs ${vipStatus.isVip ? 'plasmo-text-[#ff4500]' : 'plasmo-text-gray-500'}`}>
                       {vipStatus.isVip ? `VIP会员 (${vipStatus.vipLevel || '标准'}级)` : '普通用户'}
                     </span>
                   )}
+                  {/* {uploadQuota && (
+                    <span className="plasmo-text-xs plasmo-text-gray-500">
+                      剩余上传次数: {uploadQuota.remainingCount} 次
+                    </span>
+                  )} */}
                 </div>
                 <Button variant="outline" onClick={handleLogout}>
                   登出
@@ -302,50 +277,38 @@ const HomePage = () => {
               <>
                 <Dialog open={isLoginOpen} onOpenChange={setIsLoginOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="default" className="plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white">登录/注册</Button>
+                    <Button variant="default" className="plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white">登录</Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>登录/注册</DialogTitle>
+                      <DialogTitle>登录</DialogTitle>
                       <DialogDescription>
-                        请输入手机号获取验证码登录或注册<br/>
-                        未注册的手机号默认为您进行注册
+                        请输入您的手机号和密码进行登录
                       </DialogDescription>
                     </DialogHeader>
                     <Form {...form}>
-                      <form onSubmit={form.handleSubmit(handleVerifyCode)} className="plasmo-space-y-4">
+                      <form onSubmit={form.handleSubmit(handleLogin)} className="plasmo-space-y-4">
                         <FormField
                           control={form.control}
                           name="phoneNumber"
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>手机号</FormLabel>
-                              <div className="plasmo-flex plasmo-space-x-2">
-                                <FormControl>
-                                  <Input type="tel" {...field} placeholder="请输入手机号" />
-                                </FormControl>
-                                <Button 
-                                  type="button" 
-                                  variant="outline" 
-                                  className="plasmo-whitespace-nowrap"
-                                  onClick={handleSendVerificationCode}
-                                  disabled={isSendingCode || countdown > 0}
-                                >
-                                  {countdown > 0 ? `${countdown}秒后重试` : '发送验证码'}
-                                </Button>
-                              </div>
+                              <FormControl>
+                                <Input type="tel" {...field} placeholder="请输入手机号" />
+                              </FormControl>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
                         <FormField
                           control={form.control}
-                          name="code"
+                          name="password"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>验证码</FormLabel>
+                              <FormLabel>密码</FormLabel>
                               <FormControl>
-                                <Input {...field} placeholder="请输入验证码" />
+                                <Input type="password" {...field} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -353,10 +316,83 @@ const HomePage = () => {
                         />
                         <Button
                           type="submit"
-                          className="plasmo-w-full plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white"
+                          className="plasmo-w-full"
                           disabled={isLoading}>
-                          {isLoading ? "验证中..." : "登录/注册"}
+                          {isLoading ? "登录中..." : "登录"}
                         </Button>
+                      </form>
+                    </Form>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={isRegisterOpen} onOpenChange={setIsRegisterOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="default" className="plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white">注册</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>注册</DialogTitle>
+                      <DialogDescription>
+                        请填写以下信息完成注册
+                      </DialogDescription>
+                    </DialogHeader>
+                    <Form {...form}>
+                      <form onSubmit={form.handleSubmit(handleRegister)} className="plasmo-space-y-4">
+                        <FormField
+                          control={form.control}
+                          name="phoneNumber"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>手机号 <span className="plasmo-text-[#ff4500]">*</span></FormLabel>
+                              <FormControl>
+                                <Input type="tel" {...field} placeholder="请输入手机号" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="username"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>
+                                用户名 <span className="plasmo-text-gray-500 plasmo-text-xs">(可选)</span>
+                              </FormLabel>
+                              <FormControl>
+                                <Input {...field} placeholder="请输入用户名（选填）" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>密码 <span className="plasmo-text-[#ff4500]">*</span></FormLabel>
+                              <FormControl>
+                                <Input type="password" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="confirmPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>确认密码 <span className="plasmo-text-[#ff4500]">*</span></FormLabel>
+                              <FormControl>
+                                <Input type="password" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button type="submit" className="plasmo-w-full plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white">注册</Button>
                       </form>
                     </Form>
                   </DialogContent>
@@ -531,7 +567,7 @@ const HomePage = () => {
                   </div>
 
                   <div className="plasmo-text-3xl plasmo-font-bold plasmo-text-[#333] plasmo-mb-6">
-                    ¥  ̶?̶?̶.̶?̶?̶ <span className="plasmo-text-sm plasmo-font-normal">/人/年</span>
+                    ¥99.00 <span className="plasmo-text-sm plasmo-font-normal">/人/年</span>
                   </div>
 
                   <ul className="plasmo-list-none plasmo-p-0 plasmo-m-0 plasmo-mb-6">
@@ -546,12 +582,9 @@ const HomePage = () => {
                       </li>
                     ))}
                   </ul>
-                  
-                  <Button 
-                    className="plasmo-w-full plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white plasmo-opacity-50 plasmo-cursor-not-allowed"
-                    disabled
-                  >
-                    限时免费内测中
+
+                  <Button className="plasmo-w-full plasmo-bg-[#ff4500] hover:plasmo-bg-[#e63e00] plasmo-text-white">
+                    立即购买
                   </Button>
                 </>
               )}

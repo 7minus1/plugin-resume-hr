@@ -360,7 +360,7 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
       const formData = new FormData()
       formData.append('file', file)
       formData.append('deliveryChannel', '猎聘')
-      const jobTitle = document.querySelector('.ant-im-btn-link span')?.textContent?.trim() || '未知岗位'
+      const jobTitle = document.querySelector('.ant-im-btn-link span')?.textContent?.trim() || '未知职位'
       formData.append('deliveryPosition', jobTitle)
       console.log('发送请求到服务器，职位:', jobTitle)
 

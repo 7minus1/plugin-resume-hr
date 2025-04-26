@@ -6,7 +6,7 @@ const Popup = () => {
   const [file, setFile] = useState<File | null>(null)
   const [uploadStatus, setUploadStatus] = useState<string>("")
   const [isUploading, setIsUploading] = useState(false)
-  const [user, setUser] = useState<{ phoneNumber: string; username?: string; isVip?: boolean } | null>(null)
+  const [user, setUser] = useState<{ phoneNumber: string; username?: string } | null>(null)
   const [error, setError] = useState<string>("")
 
   useEffect(() => {
@@ -138,7 +138,7 @@ const Popup = () => {
                 textOverflow: "ellipsis", 
                 whiteSpace: "nowrap" 
               }}>
-                { user.phoneNumber}
+                {user.username}
               </span>
               <span>→</span>
             </>

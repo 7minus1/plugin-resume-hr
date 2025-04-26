@@ -8,9 +8,6 @@ interface User {
   phoneNumber: string;
   username?: string;
   isActive?: boolean;
-  isVip?: boolean;
-  vipExpireDate?: string;
-  uploadCount?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -60,53 +57,46 @@ api.interceptors.response.use(
   }
 );
 
-// 发送验证码
-export const sendVerificationCode = async (phoneNumber: string) => {
+// 用户注册
+export const register = async (userData: { username?: string; phoneNumber: string; password: string }) => {
   try {
-    const response = await api.post('/users/send-verification-code', { phoneNumber });
+    const response = await api.post('/users/register', userData);
     return response.data;
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      // 处理Axios错误
-      if (error.response) {
-        // 服务器返回了错误状态码
-        throw new Error(error.response.data?.message || '发送验证码失败');
-      } else if (error.request) {
-        // 请求已发送但没有收到响应
-        throw new Error('无法连接到服务器，请检查网络连接');
-      }
-    }
-    // 处理其他错误
-    throw new Error('发送验证码失败，请稍后重试');
+    throw error;
   }
 };
 
-// 验证码登录/注册
-export const verifyCode = async (data: { phoneNumber: string; code: string }): Promise<LoginResponse> => {
+// 用户登录
+export const login = async (credentials: { phoneNumber: string; password: string }): Promise<LoginResponse> => {
   try {
-    const response = await api.post('/users/verify-code', data);
-    console.log('验证码登录/注册响应:', response.data);
+    const response = await api.post('/users/login', credentials);
+    console.log('Login response:', response.data);
     
     // 保存token
     await chrome.storage.local.set({
       access_token: response.data.access_token
     });
 
+    // 获取用户信息
+    const userData = await getUserProfile();
+    console.log('User profile:', userData);
+    
     // 保存用户信息
     await chrome.storage.local.set({
-      user: JSON.stringify(response.data.user)
+      user: JSON.stringify(userData)
     });
 
     return {
       access_token: response.data.access_token,
-      user: response.data.user
+      user: userData
     };
   } catch (error) {
     if (axios.isAxiosError(error)) {
       // 处理Axios错误
       if (error.response) {
         // 服务器返回了错误状态码
-        throw new Error(error.response.data?.message || '验证码错误或已过期');
+        throw new Error(error.response.data?.message || '用户名或密码错误');
       } else if (error.request) {
         // 请求已发送但没有收到响应
         throw new Error('无法连接到服务器，请检查网络连接');
@@ -114,6 +104,45 @@ export const verifyCode = async (data: { phoneNumber: string; code: string }): P
     }
     // 处理其他错误
     throw new Error('登录失败，请稍后重试');
+  }
+};
+
+// 验证码登录
+export const loginWithVerification = async (data: { phoneNumber: string; code: string }): Promise<LoginResponse> => {
+  try {
+    const response = await api.post('/users/verify-code', data);
+    console.log('Login with verification response:', response.data);
+    
+    // 保存token
+    await chrome.storage.local.set({
+      access_token: response.data.access_token
+    });
+
+    // 获取用户信息
+    const userData = await getUserProfile();
+    console.log('User profile:', userData);
+    
+    // 保存用户信息
+    await chrome.storage.local.set({
+      user: JSON.stringify(userData)
+    });
+
+    return {
+      access_token: response.data.access_token,
+      user: userData
+    };
+  } catch (error) {
+    throw error;
+  }
+};
+
+// 发送验证码
+export const sendVerificationCode = async (phoneNumber: string) => {
+  try {
+    const response = await api.post('/users/send-verification-code', { phoneNumber });
+    return response.data;
+  } catch (error) {
+    throw error;
   }
 };
 

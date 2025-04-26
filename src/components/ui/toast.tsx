@@ -1,43 +1,38 @@
-import React, { useEffect } from 'react'
+import * as React from "react"
 import { cn } from "@/lib/utils"
 
-interface ToastProps {
+interface ToastProps extends React.HTMLAttributes<HTMLDivElement> {
   message: string
-  type: 'success' | 'error'
-  onClose: () => void
+  type?: "success" | "error"
   duration?: number
+  onClose?: () => void
 }
 
-export const Toast: React.FC<ToastProps> = ({ message, type, onClose, duration = 3000 }) => {
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      onClose()
-    }, duration)
+const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
+  ({ className, message, type = "success", duration = 1500, onClose, ...props }, ref) => {
+    React.useEffect(() => {
+      const timer = setTimeout(() => {
+        onClose?.()
+      }, duration)
 
-    return () => clearTimeout(timer)
-  }, [duration, onClose])
+      return () => clearTimeout(timer)
+    }, [duration, onClose])
 
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: '20px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        backgroundColor: type === 'success' ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 0, 0, 0.8)',
-        color: 'white',
-        padding: '12px 24px',
-        borderRadius: '4px',
-        zIndex: 10001,
-        fontSize: '14px',
-        transition: 'opacity 0.3s ease',
-        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)'
-      }}>
-      {message}
-    </div>
-  )
-}
-
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          "plasmo-fixed plasmo-top-1/2 plasmo-left-1/2 plasmo-transform plasmo--translate-x-1/2 plasmo--translate-y-1/2 plasmo-z-50 plasmo-px-6 plasmo-py-3 plasmo-rounded-lg plasmo-shadow-lg plasmo-transition-all plasmo-duration-300 plasmo-ease-in-out plasmo-min-w-[200px] plasmo-text-center",
+          type === "success" ? "plasmo-bg-[#ff4500] plasmo-text-white" : "plasmo-bg-red-500 plasmo-text-white",
+          className
+        )}
+        {...props}
+      >
+        {message}
+      </div>
+    )
+  }
+)
 Toast.displayName = "Toast"
 
 export { Toast } 
