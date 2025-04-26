@@ -2,8 +2,6 @@
 
 import type { PlasmoCSConfig } from "plasmo"
 import { config as envConfig } from '../config/env';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 export const config: PlasmoCSConfig = {
   matches: ["https://lpt.liepin.com/chat/im*"],
@@ -139,175 +137,6 @@ const observeTargetContainer = () => {
 // 启动监听
 observeTargetContainer()
 
-// 创建一个基本的PDF，用于备用情况
-const createFallbackPdf = (resumeInfo: Record<string, string>) => {
-  const doc = new jsPDF();
-  const margin = 20;
-  let yPos = margin;
-  
-  doc.setFontSize(16);
-  doc.text('简历信息', margin, yPos);
-  yPos += 10;
-  
-  doc.setFontSize(12);
-  Object.entries(resumeInfo).forEach(([key, value]) => {
-    if (value) {
-      yPos += 8;
-      doc.text(`${key}: ${value}`, margin, yPos);
-    }
-  });
-  
-  return doc.output('blob');
-};
-
-// 将在线简历转换为PDF文件
-const convertOnlineResumeToFile = async (status: HTMLElement): Promise<File | null> => {
-  try {
-    status.textContent = '正在处理简历...';
-    
-    // 获取简历容器元素
-    const resumeContainer = document.querySelector('.resume-detail-chat');
-    if (!resumeContainer) {
-      throw new Error('找不到简历容器');
-    }
-    
-    // 提取基本信息
-    const resumeInfo: Record<string, string> = {};
-    
-    // 提取姓名
-    const nameElement = resumeContainer.querySelector('.name--IIHDE');
-    if (nameElement) {
-      resumeInfo['姓名'] = nameElement.textContent?.trim() || '未知';
-    }
-    
-    // 提取其他基本信息（工作经验、学历等）
-    const basicInfoElements = resumeContainer.querySelectorAll('.basic--VbSBm .text--ZG3YR');
-    basicInfoElements.forEach(element => {
-      const text = element.textContent?.trim();
-      if (text && text.includes('：')) {
-        const [key, value] = text.split('：');
-        resumeInfo[key.trim()] = value.trim();
-      }
-    });
-    
-    // 获取职位名称
-    try {
-      const jobTitleElement = document.querySelector('.position-name');
-      if (jobTitleElement) {
-        resumeInfo['投递职位'] = jobTitleElement.textContent?.trim() || '未知职位';
-      }
-    } catch (error) {
-      console.error('提取职位名称失败:', error);
-    }
-    
-    status.textContent = '正在生成PDF...';
-    
-    try {
-      // 使用html2canvas将容器转换为图像
-      const canvas = await html2canvas(resumeContainer as HTMLElement, {
-        scale: 1.5, // 提高分辨率
-        useCORS: true, // 允许跨域图像
-        logging: false,
-        allowTaint: true
-      });
-      
-      // 创建PDF实例（A4纸张）
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-      
-      // 计算适合A4页面的尺寸
-      const imgData = canvas.toDataURL('image/png');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = Math.min(pageWidth / imgWidth, pageHeight / imgHeight);
-      const imgX = (pageWidth - imgWidth * ratio) / 2;
-      const imgY = 10;
-      
-      // 添加图像到PDF
-      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-      
-      // 转换为Blob
-      const pdfBlob = pdf.output('blob');
-      
-      // 创建文件对象
-      const fileName = `${resumeInfo['姓名'] || '未知'}_${resumeInfo['投递职位'] || '简历'}.pdf`;
-      const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
-      
-      return file;
-    } catch (error) {
-      console.error('使用html2canvas转换失败:', error);
-      
-      // 回退：使用基本PDF创建
-      status.textContent = '正在创建简易PDF...';
-      const fallbackBlob = createFallbackPdf(resumeInfo);
-      const fileName = `${resumeInfo['姓名'] || '未知'}_${resumeInfo['投递职位'] || '简历'}.pdf`;
-      return new File([fallbackBlob], fileName, { type: 'application/pdf' });
-    }
-  } catch (error) {
-    console.error('转换简历失败:', error);
-    status.textContent = '转换简历失败: ' + error.message;
-    return null;
-  }
-};
-
-// 处理在线简历上传
-const handleOnlineResumeUpload = async (file: File, status: HTMLElement): Promise<boolean> => {
-  status.textContent = '正在上传简历...';
-  console.log('上传在线简历文件:', file.name, file.size);
-  
-  const formData = new FormData();
-  formData.append('file', file);
-  
-  // 获取Cookie中的token
-  const token = document.cookie
-    .split(';')
-    .map(cookie => cookie.trim())
-    .find(cookie => cookie.startsWith('__TOKEN__='))
-    ?.split('=')[1];
-  
-  if (!token) {
-    throw new Error('未找到认证信息，请确保已登录');
-  }
-  
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
-  
-  try {
-    const response = await fetch(`${envConfig.API_BASE_URL}/api/v1/resume/upload`, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'Authorization': token
-      },
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('上传失败:', errorData);
-      status.textContent = `上传失败: ${errorData.message || '服务器错误'}`;
-      return false;
-    }
-    
-    const data = await response.json();
-    console.log('上传成功:', data);
-    status.textContent = '上传成功！';
-    return true;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    console.error('上传过程中出错:', error);
-    status.textContent = `上传失败: ${error.message || '网络错误'}`;
-    return false;
-  }
-};
-
 // 处理PDF上传
 const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLElement) => {
   try {
@@ -365,7 +194,7 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
       console.log('发送请求到服务器，职位:', jobTitle)
 
       console.log('发送请求到服务器...')
-      const response = await fetch(`${envConfig.API_BASE_URL}/api/v1/resume/upload`, {
+      const response = await fetch(`${envConfig.API_BASE_URL}/resume/upload`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -432,7 +261,7 @@ const createToast = (message: string) => {
   }, 3000)
 }
 
-// 修改checkAndHandlePdfLinks函数，支持在线简历处理
+// 检查并处理PDF链接
 const checkAndHandlePdfLinks = (
   element: Element,
   floatingWindow: HTMLElement,
@@ -450,18 +279,9 @@ const checkAndHandlePdfLinks = (
     return
   }
   
-  // 首先检查是否存在简历容器
-  const resumeContainer = document.querySelector('.resume-detail-chat')
-  
   // 首先检查元素本身是否是下载链接
   let foundPdfUrl: string | null = null
   let foundFileName: string | null = null
-  let isOnlineResume = false
-  
-  if (resumeContainer) {
-    console.log('找到在线简历容器')
-    isOnlineResume = true
-  }
   
   if (element instanceof HTMLAnchorElement && element.classList.contains('download--SCDVl')) {
     console.log('元素本身是下载链接:', element.href)
@@ -477,7 +297,7 @@ const checkAndHandlePdfLinks = (
   }
   
   // 然后检查子元素中的下载链接
-  if (!foundPdfUrl && !isOnlineResume) {
+  if (!foundPdfUrl) {
     const downloadLinks = element.querySelectorAll('a.download--SCDVl')
     console.log('找到下载链接数量:', downloadLinks.length)
     
@@ -499,9 +319,9 @@ const checkAndHandlePdfLinks = (
     }
   }
 
-  // 只有在找到PDF链接或是在线简历时才显示浮窗和设置上传按钮事件
-  if ((foundPdfUrl && foundFileName) || isOnlineResume) {
-    console.log('找到PDF链接或在线简历，显示浮窗')
+  // 只有在找到PDF链接时才显示浮窗和设置上传按钮事件
+  if (foundPdfUrl && foundFileName) {
+    console.log('找到PDF链接，显示浮窗，URL:', foundPdfUrl, '文件名:', foundFileName)
     floatingWindow.style.display = 'block'
     
     // 清空浮窗内容
@@ -552,6 +372,7 @@ const checkAndHandlePdfLinks = (
       console.log('按钮被点击')
       event.preventDefault()
       event.stopPropagation()
+      console.log('开始上传:', foundPdfUrl, foundFileName)
       
       // 设置处理中标志
       floatingWindow.setAttribute('data-processing', 'true')
@@ -562,23 +383,7 @@ const checkAndHandlePdfLinks = (
       finalButton.style.cursor = 'not-allowed'
       
       try {
-        let success = false;
-        if (isOnlineResume) {
-          console.log('处理在线简历')
-          // 将在线简历转换为PDF文件
-          const resumeFile = await convertOnlineResumeToFile(newStatus);
-          
-          if (resumeFile) {
-            // 上传处理后的简历文件
-            success = await handleOnlineResumeUpload(resumeFile, newStatus);
-          } else {
-            throw new Error('生成简历文件失败');
-          }
-        } else if (foundPdfUrl && foundFileName) {
-          console.log('开始上传PDF:', foundPdfUrl, foundFileName)
-          success = await handlePdfUpload(foundPdfUrl, foundFileName, newStatus)
-        }
-        
+        const success = await handlePdfUpload(foundPdfUrl, foundFileName, newStatus)
         if (success) {
           createToast('入库成功！')
           // 延迟清空状态文本，给用户足够时间看到成功消息
@@ -621,7 +426,7 @@ const checkAndHandlePdfLinks = (
   } else {
     // 只有在不处理中时才隐藏浮窗
     if (!isProcessing) {
-      console.log('未找到PDF链接或在线简历，隐藏浮窗')
+      console.log('未找到PDF链接，隐藏浮窗')
       floatingWindow.style.display = 'none'
     }
   }
@@ -657,20 +462,16 @@ const observePage = async () => {
       
       // 等待一小段时间确保DOM完全渲染
       setTimeout(() => {
-        console.log('开始检查PDF链接和在线简历')
-        
-        // 检查是否有在线简历
-        const resumeContainer = document.querySelector('.resume-detail-chat');
-        
+        console.log('开始检查PDF链接')
         // 检查整个文档中的PDF链接
         const allDownloadLinks = document.querySelectorAll('a.download--SCDVl')
-        console.log('找到所有下载链接数量:', allDownloadLinks.length, '是否存在在线简历:', !!resumeContainer)
+        console.log('找到所有下载链接数量:', allDownloadLinks.length)
         
-        if (allDownloadLinks.length > 0 || resumeContainer) {
-          // 如果找到下载链接或在线简历，检查并处理
+        if (allDownloadLinks.length > 0) {
+          // 如果找到下载链接，检查并处理
           checkAndHandlePdfLinks(targetContainer, floatingWindow, uploadButton, status)
         } else {
-          console.log('未找到下载链接或在线简历，隐藏浮窗')
+          console.log('未找到下载链接，隐藏浮窗')
           floatingWindow.style.display = 'none'
         }
       }, 500)
