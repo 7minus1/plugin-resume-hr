@@ -25,6 +25,8 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.7.4",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^3.0.1",
     "lucide-react": "^0.501.0",
     "plasmo": "0.90.3",
     "react": "18.2.0",
@@ -58,8 +60,13 @@
     ],
     "web_accessible_resources": [
       {
-        "resources": ["src/components/**/*"],
-        "matches": ["<all_urls>"]
+        "resources": [
+          "src/components/**/*", 
+          "src/lib/vendor/*"
+        ],
+        "matches": [
+          "<all_urls>"
+        ]
       }
     ]
   }
