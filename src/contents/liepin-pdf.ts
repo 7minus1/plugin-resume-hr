@@ -511,8 +511,8 @@ const observePage = async () => {
   console.log('开始监听页面变化')
   
   // 创建两个浮窗 - 在线简历和附件简历
-  const onlineResumeWindow = await createFloatingWindow('推鲤 AI 快聘 - 在线简历', '在线简历入库', 'top')
-  const attachmentResumeWindow = await createFloatingWindow('推鲤 AI 快聘 - 附件简历', '附件简历入库', 'bottom')
+  const onlineResumeWindow = await createFloatingWindow('推鲤 AI 快聘 - 在线简历', '在线简历入库', 'bottom')
+  const attachmentResumeWindow = await createFloatingWindow('推鲤 AI 快聘 - 附件简历', '附件简历入库', 'top')
   
   // 检查目标容器是否存在并处理浮窗
   const handleTargetContainer = async () => {

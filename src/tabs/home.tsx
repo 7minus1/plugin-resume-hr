@@ -61,6 +61,7 @@ const HomePage = () => {
   } | null>(null)
   const [isSendingCode, setIsSendingCode] = useState(false)
   const [countdown, setCountdown] = useState(0)
+  const [isBitableConfigured, setIsBitableConfigured] = useState(false)
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -115,26 +116,36 @@ const HomePage = () => {
 
   const checkAuthStatus = async () => {
     try {
-      const result = await chrome.storage.local.get(['access_token', 'user'])
-      const token = result.access_token
-      const userStr = result.user
+      console.log('开始检查认证状态...');
+      const result = await chrome.storage.local.get(['access_token', 'user']);
+      console.log('从Chrome存储获取的数据:', result);
+      
+      const token = result.access_token;
+      const userStr = result.user;
       
       if (token && userStr) {
+        console.log('找到token和用户数据');
         try {
-          const userData = JSON.parse(userStr)
-          setUser(userData)
+          const userData = JSON.parse(userStr);
+          console.log('从存储中加载的用户数据:', userData);
+          setUser(userData);
+          // 确保加载用户相关数据
+          loadBitableInfo();
+          loadUserVipStatus();
+          loadUserUploadQuota();
         } catch (error) {
-          console.error('解析用户数据失败:', error)
-          await chrome.storage.local.remove(['access_token', 'user'])
-          setUser(null)
+          console.error('解析用户数据失败:', error);
+          await chrome.storage.local.remove(['access_token', 'user']);
+          setUser(null);
         }
       } else {
-        setUser(null)
+        console.log('未找到token或用户数据');
+        setUser(null);
       }
     } catch (error) {
-      console.error('获取用户信息失败:', error)
-      await chrome.storage.local.remove(['access_token', 'user'])
-      setUser(null)
+      console.error('获取用户信息失败:', error);
+      await chrome.storage.local.remove(['access_token', 'user']);
+      setUser(null);
     }
   }
 
@@ -166,20 +177,47 @@ const HomePage = () => {
 
   const handleVerifyCode = async (values: z.infer<typeof formSchema>) => {
     try {
-      setIsLoading(true)
+      setIsLoading(true);
+      console.log('开始验证码登录/注册...');
       const response = await verifyCode({
         phoneNumber: values.phoneNumber,
         code: values.code
-      })
-      setIsLoginOpen(false)
-      setUser(response.user)
-      form.reset()
-      setToast({ message: "登录成功", type: "success" })
+      });
+      console.log('验证码登录/注册成功，响应数据:', response);
+      
+      setIsLoginOpen(false);
+      setUser(response.user);
+      console.log('已设置用户状态:', response.user);
+      
+      // 添加延迟，确保token已保存到Chrome存储
+      console.log('等待token保存完成...');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // 验证token是否已保存
+      const tokenCheck = await chrome.storage.local.get(['access_token']);
+      console.log('验证token是否已保存:', tokenCheck);
+      
+      if (!tokenCheck.access_token) {
+        console.error('token未保存成功，尝试重新保存');
+        await chrome.storage.local.set({ access_token: response.access_token });
+        // 再次等待
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // 立即加载用户相关数据
+      console.log('开始加载用户相关数据...');
+      loadBitableInfo();
+      loadUserVipStatus();
+      loadUserUploadQuota();
+      
+      form.reset();
+      setToast({ message: "登录成功", type: "success" });
     } catch (error: any) {
-      const errorMessage = error.message || "验证码错误或已过期"
-      setToast({ message: errorMessage, type: "error" })
+      console.error('验证码登录/注册失败:', error);
+      const errorMessage = error.message || "验证码错误或已过期";
+      setToast({ message: errorMessage, type: "error" });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
   }
 
@@ -191,15 +229,31 @@ const HomePage = () => {
   const loadBitableInfo = async () => {
     try {
       const info = await getBitableInfo()
+      console.log('获取到的多维表格信息:', info)
+      
       if (info) {
-        setBitableInfo({
-          bitableUrl: info.bitableUrl,
-          bitableToken: info.bitableToken
-        })
-        setTempBitableInfo({
-          bitableUrl: info.bitableUrl,
-          bitableToken: info.bitableToken
-        })
+        setIsBitableConfigured(info.configured)
+        
+        if (info.configured && info.data) {
+          setBitableInfo({
+            bitableUrl: info.data.bitableUrl,
+            bitableToken: info.data.bitableToken
+          })
+          setTempBitableInfo({
+            bitableUrl: info.data.bitableUrl,
+            bitableToken: info.data.bitableToken
+          })
+        } else {
+          // 未配置多维表格信息
+          setBitableInfo({
+            bitableUrl: '',
+            bitableToken: ''
+          })
+          setTempBitableInfo({
+            bitableUrl: '',
+            bitableToken: ''
+          })
+        }
       }
     } catch (error) {
       console.error('获取多维表格信息失败:', error)
@@ -225,11 +279,17 @@ const HomePage = () => {
     try {
       await updateBitableInfo(tempBitableInfo)
       setBitableInfo(tempBitableInfo)
-      setSaveStatus('保存成功')
+      // 使用toast显示成功消息
+      setToast({ message: "保存成功", type: "success" })
+      // 保存成功时退出编辑状态
       setIsEditing(false)
+      // 重新加载多维表格信息
+      loadBitableInfo()
     } catch (error) {
       console.error('更新多维表格信息失败:', error)
-      setSaveStatus('保存失败，请重试')
+      // 使用toast显示失败消息
+      setToast({ message: "多维表配置失败", type: "error" })
+      // 失败时保持在编辑状态，不退出
     } finally {
       setIsSaving(false)
     }
@@ -459,13 +519,13 @@ const HomePage = () => {
                       <div className="plasmo-mb-3">
                         <div className="plasmo-text-xs plasmo-text-gray-500 plasmo-mb-1">多维表格链接</div>
                         <div className="plasmo-text-sm plasmo-text-gray-900 plasmo-break-all">
-                          {bitableInfo.bitableUrl || '未设置'}
+                          {isBitableConfigured ? bitableInfo.bitableUrl : '未设置'}
                         </div>
                       </div>
                       <div className="plasmo-mb-3">
                         <div className="plasmo-text-xs plasmo-text-gray-500 plasmo-mb-1">多维表格授权码</div>
                         <div className="plasmo-text-sm plasmo-text-gray-900">
-                          {bitableInfo.bitableToken ? '••••••••' : '未设置'}
+                          {isBitableConfigured ? '••••••••' : '未设置'}
                         </div>
                       </div>
                     </>
@@ -479,6 +539,58 @@ const HomePage = () => {
                     </p>
                   )}
                 </form>
+
+                {/* 新增资源卡片 */}
+                <div className="plasmo-mt-6 plasmo-p-4 plasmo-border plasmo-border-gray-200 plasmo-rounded-lg plasmo-bg-gray-50">
+                  <h3 className="plasmo-text-base plasmo-font-medium plasmo-text-[#333] plasmo-mb-4">资源中心</h3>
+                  <div className="plasmo-space-y-3">
+                    <div>
+                      <div className="plasmo-text-sm plasmo-font-medium plasmo-text-gray-700 plasmo-mb-1">手把手安装使用指南
+                        <a 
+                          href="https://liyuejiuxiao.feishu.cn/docx/XeZ0dTUdDoXxp9xAEdlcpcBCnTd?from=from_copylink" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="plasmo-text-sm plasmo-text-[#ff4500] hover:plasmo-text-[#e63e00] plasmo-inline-flex plasmo-items-center"
+                        >
+                          <span>&nbsp;立即查看</span>
+                          <svg className="plasmo-w-4 plasmo-h-4 plasmo-ml-1" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M7 17L17 7M17 7H8M17 7V16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </a>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="plasmo-text-sm plasmo-font-medium plasmo-text-gray-700 plasmo-mb-1">多维表格模板
+                        <a 
+                          href="https://ycnbmjmwp0hj.feishu.cn/base/EzNnbOeQxaQ2h0sPVbwcDcPunic?table=tbl6r8N8ixyd3XbL&view=vewzsLGvej" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="plasmo-text-sm plasmo-text-[#ff4500] hover:plasmo-text-[#e63e00] plasmo-inline-flex plasmo-items-center"
+                        >
+                          <span>&nbsp;立即查看</span>
+                          <svg className="plasmo-w-4 plasmo-h-4 plasmo-ml-1" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M7 17L17 7M17 7H8M17 7V16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </a>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="plasmo-text-sm plasmo-font-medium plasmo-text-gray-700 plasmo-mb-1">免费内测申请地址
+                        <a 
+                          href="https://ycnbmjmwp0hj.feishu.cn/share/base/form/shrcneX1NSH0RjjyoONo215U03d" 
+                          target="_blank" 
+                        rel="noopener noreferrer"
+                        className="plasmo-text-sm plasmo-text-[#ff4500] hover:plasmo-text-[#e63e00] plasmo-inline-flex plasmo-items-center"
+                        >
+                          <span>&nbsp;立即申请</span>
+                        <svg className="plasmo-w-4 plasmo-h-4 plasmo-ml-1" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M7 17L17 7M17 7H8M17 7V16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </>
             ) : (
               <div className="plasmo-bg-gray-100 plasmo-p-4 plasmo-rounded-lg plasmo-mb-4">

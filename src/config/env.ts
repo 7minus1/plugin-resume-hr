@@ -2,11 +2,11 @@
 const ENV = {
   development: {
     // API_BASE_URL: 'http://localhost:3000/api'
-    API_BASE_URL: 'https://www.ituili.com/api'
+    API_BASE_URL: 'https://www.ituili.com/api/hr'
   },
   production: {
     // API_BASE_URL: 'https://plugins-backend.vercel.app/api'
-    API_BASE_URL: 'https://www.ituili.com/api'
+    API_BASE_URL: 'https://www.ituili.com/api/hr'
   }
 };
 
