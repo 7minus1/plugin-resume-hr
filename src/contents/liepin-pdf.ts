@@ -5,14 +5,15 @@ import { config as envConfig } from '../config/env';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { marked } from 'marked';
+import { createToast } from '../lib/ui-utils';
 
 export const config: PlasmoCSConfig = {
-  matches: ["https://lpt.liepin.com/*"],
+  matches: ["https://www.liepin.com/resume-preview/*"],
   all_frames: true,
   run_at: "document_end"
 }
 
-console.log('Content script loaded')
+console.log('猎聘内容脚本已加载')
 
 // 等待目标容器加载
 const waitForTargetContainer = (): Promise<HTMLElement> => {
@@ -298,34 +299,6 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
       throw error
     }
   }
-}
-
-// 创建提示框
-const createToast = (message: string) => {
-  const toast = document.createElement('div')
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 12px 24px;
-    border-radius: 4px;
-    z-index: 10001;
-    font-size: 14px;
-    transition: opacity 0.3s ease;
-  `
-  toast.textContent = message
-  document.body.appendChild(toast)
-  
-  // 3秒后自动消失
-  setTimeout(() => {
-    toast.style.opacity = '0'
-    setTimeout(() => {
-      document.body.removeChild(toast)
-    }, 300)
-  }, 3000)
 }
 
 // 转换在线简历为PDF文件

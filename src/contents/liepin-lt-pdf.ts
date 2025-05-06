@@ -4,6 +4,7 @@ import type { PlasmoCSConfig } from "plasmo"
 import { config as envConfig } from '../config/env';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { createToast } from '../lib/ui-utils';
 
 export const config: PlasmoCSConfig = {
   matches: ["https://h.liepin.com/resume/showresumedetail/*"],
@@ -190,32 +191,6 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
       throw error
     }
   }
-}
-
-// 创建提示框
-const createToast = (message: string) => {
-  const toast = document.createElement('div')
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 10px 20px;
-    border-radius: 4px;
-    z-index: 10000;
-    font-size: 14px;
-  `
-  toast.textContent = message
-  document.body.appendChild(toast)
-  
-  // 3秒后删除
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.parentNode.removeChild(toast)
-    }
-  }, 3000)
 }
 
 // 将在线简历转换为文件
