@@ -4,9 +4,10 @@ import type { PlasmoCSConfig } from "plasmo"
 import { config as envConfig } from '../config/env';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { marked } from 'marked';
 
 export const config: PlasmoCSConfig = {
-  matches: ["https://www.zhipin.com/web/chat/index*"],
+  matches: ["https://www.zhipin.com/web/chat/*"],
   all_frames: true,
   run_at: "document_end"
 }
@@ -176,6 +177,18 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, jobTitle: strin
 
       if (response.ok) {
         status.textContent = '入库成功！'
+        
+        // 如果上传成功并返回了recordId，开始轮询评估接口
+        if (result.success && result.data && result.data.data && result.data.data.recordId) {
+          status.textContent = '正在评估简历...'
+          console.log('开始轮询评估接口，recordId:', result.data.data.recordId)
+          const evalResult = await pollResumeEvaluation(result.data.data.recordId, token)
+          if (evalResult) {
+            // 显示评估结果浮窗
+            showEvaluationResultWindow(evalResult, jobTitle)
+          }
+        }
+        
         return true
       } else {
         // 处理服务器返回的错误信息
@@ -199,27 +212,70 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, jobTitle: strin
   }
 }
 
-// 获取职位信息
+// 获取职位名称
 const getJobTitle = (): string => {
-  // 首先尝试从position-name类获取职位名称
-  const positionNameElement = document.querySelector('.position-name');
-  if (positionNameElement) {
-    const positionName = positionNameElement.textContent?.trim() || '';
-    console.log('从position-name获取到职位名称:', positionName);
-    if (positionName) {
-      return positionName;
+  if (window.location.href.includes('/index')) {
+    // 首先尝试从position-name类获取职位名称
+    const positionNameElement = document.querySelector('.position-name');
+    if (positionNameElement) {
+      const positionName = positionNameElement.textContent?.trim() || '';
+      console.log('从position-name获取到职位名称:', positionName);
+      if (positionName) {
+        return positionName;
+      }
     }
-  }
-  
-  // 如果找不到position-name，回退到原来的方法
-  const jobTitleElement = document.querySelector('.message-card-top-title')
-  if (jobTitleElement) {
-    const fullText = jobTitleElement.textContent || ''
-    // 提取"沟通的职位-"后面的内容
-    const match = fullText.match(/沟通的职位-(.+)/)
-    if (match && match[1]) {
-      console.log('从message-card-top-title获取到职位名称:', match[1].trim());
-      return match[1].trim()
+    
+    // 如果找不到position-name，回退到原来的方法
+    const jobTitleElement = document.querySelector('.message-card-top-title')
+    if (jobTitleElement) {
+      const fullText = jobTitleElement.textContent || ''
+      // 提取"沟通的职位-"后面的内容
+      const match = fullText.match(/沟通的职位-(.+)/)
+      if (match && match[1]) {
+        console.log('从message-card-top-title获取到职位名称:', match[1].trim());
+        return match[1].trim()
+      }
+    }
+  } else if (window.location.href.includes('/recommend')) {
+    // 对于recommend路由，使用指定的选择器获取职位名称
+    // 在iframe中寻找
+    const iframes = document.querySelectorAll('iframe');
+    for (const iframe of iframes) {
+      const jobSelectorElement = iframe.contentDocument.querySelector('.job-selecter-wrap .ui-dropmenu-label');
+      console.log('recommend jobSelectorElement', jobSelectorElement)
+      if (jobSelectorElement) {
+        // 获取完整文本
+        const fullText = jobSelectorElement.textContent?.trim() || '';
+        console.log('从ui-dropmenu-label获取到完整文本:', fullText);
+        
+        // 从字符串末尾开始分割，取最后一个下划线之前的所有内容作为职位名称
+        const lastUnderscoreIndex = fullText.lastIndexOf('_');
+        if (lastUnderscoreIndex !== -1) {
+          const jobTitle = fullText.substring(0, lastUnderscoreIndex).trim();
+          console.log('从末尾分割提取的职位名称:', jobTitle);
+          return jobTitle;
+        }
+        
+        // 如果没有找到下划线，返回完整文本
+        console.log('未找到下划线，返回完整文本作为职位名称');
+          return fullText;
+      }
+    }
+  } else if (window.location.href.includes('/search')) {
+    // 对于search路由，使用指定的选择器获取职位名称
+    // 在iframe中寻找
+    const iframes = document.querySelectorAll('iframe');
+    for (const iframe of iframes) {
+      const searchJobElement = iframe.contentDocument.querySelector('.search-current-job');
+      console.log('searchJobElement', searchJobElement)
+      
+      if (searchJobElement) {
+        const jobTitle = searchJobElement.textContent?.trim() || '';
+        console.log('从search-current-job获取到职位名称:', jobTitle); 
+        if (jobTitle) {
+          return jobTitle;
+        }
+      }
     }
   }
   
@@ -305,14 +361,49 @@ const setupFetchInterceptor = (callback: (url: string, responseData: any) => voi
   };
 };
 
+const findOnlineResumeContainer = (): HTMLElement | null => {
+  // 查找简历容器
+  if (window.location.pathname.includes('/index')) {
+    const resumeContainer = document.querySelector('.resume-box') as HTMLElement;
+    if (!resumeContainer) {
+      return null;
+    }
+    return resumeContainer;
+  } else if (window.location.pathname.includes('/recommend')) {
+    // 检查iframe中的.resume-detail-wrap元素
+    let resumeContainer = null;
+    const iframesForResume = document.querySelectorAll('iframe');
+    iframesForResume.forEach((iframe, index) => {
+      try {
+        if (iframe.contentDocument) {
+          const resumeDetailWrap = iframe.contentDocument.querySelector('.resume-detail-wrap');
+          if (resumeDetailWrap) {
+            console.log(`在iframe ${index}中找到.resume-detail-wrap元素`);
+            resumeContainer = resumeDetailWrap as HTMLElement;
+          }
+        }
+      } catch (e) {
+        // 跨域错误，忽略
+      }
+    });
+    // 如果找不到iframe中的.resume-detail-wrap元素，则返回null
+    return resumeContainer;
+  } else if (window.location.pathname.includes('/search')) {
+    const resumeContainer = document.querySelector('.resume-detail-wrap') as HTMLElement;
+    if (!resumeContainer) {
+      return null;
+    }
+    return resumeContainer;
+  }
+}
+
 // 将在线简历转换为PDF文件
 const convertOnlineResumeToFile = async (status: HTMLElement): Promise<File | null> => {
   try {
     console.log('开始转换在线简历为PDF');
     status.textContent = '正在处理在线简历...';
     
-    // 查找简历容器
-    const resumeContainer = document.querySelector('.resume-box') as HTMLElement;
+    const resumeContainer = findOnlineResumeContainer();
     if (!resumeContainer) {
       console.error('找不到简历容器');
       status.textContent = '找不到简历内容';
@@ -348,12 +439,34 @@ const convertOnlineResumeToFile = async (status: HTMLElement): Promise<File | nu
           visibleOnScreen: rect.top < window.innerHeight && rect.bottom > 0
         });
         
+        // // 预处理处理图片，防止canvas被污染
+        // const images = infoSection.querySelectorAll('img');
+        // console.log(`找到${images.length}个图片元素`);
+        
+        // // 为所有图片添加crossorigin属性
+        // images.forEach(img => {
+        //   if (!img.hasAttribute('crossorigin')) {
+        //     img.setAttribute('crossorigin', 'anonymous');
+        //     console.log('为图片添加crossorigin属性:', img.src);
+        //   }
+        // });
+        
         // 使用更多选项提高渲染成功率
         const canvas = await html2canvas(infoSection as HTMLElement, {
           scale: 2, // 提高缩放比例以提高质量
           logging: true, // 开启日志
           useCORS: true, // 允许跨域图像
-          allowTaint: true, // 允许污染canvas
+          allowTaint: false, // 不允许污染canvas，防止toDataURL错误
+          imageTimeout: 15000, // 增加图片加载超时时间
+          // removeContainer: true, // 移除临时创建的容器
+          // ignoreElements: (element) => {
+          //   // 忽略可能导致跨域问题的元素
+          //   if (element.tagName === 'IMG' && !element.hasAttribute('crossorigin')) {
+          //     console.log('忽略没有crossorigin属性的图片:', element);
+          //     return true;
+          //   }
+          //   return false;
+          // },
           backgroundColor: '#ffffff', // 白色背景
           windowWidth: window.innerWidth,
           windowHeight: window.innerHeight,
@@ -459,6 +572,46 @@ const convertOnlineResumeToFile = async (status: HTMLElement): Promise<File | nu
           name: renderError.name
         });
         
+        // 如果渲染失败，尝试创建文本版PDF
+        console.log('尝试创建文本版PDF作为备用');
+        
+        // 提取文本内容
+        const textContent = extractTextContent(resumeContainer);
+        
+        // 创建新PDF
+        const textPdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+        });
+        
+        // 设置PDF属性
+        const pageWidth = 210;
+        const margin = 10;
+        const contentWidth = pageWidth - 2 * margin;
+        
+        // 添加标题
+        textPdf.setFontSize(16);
+        textPdf.text('简历内容 (文本版)', margin, margin + 10);
+        
+        // 添加普通文本
+        textPdf.setFontSize(12);
+        const splitText = textPdf.splitTextToSize(textContent, contentWidth);
+        textPdf.text(splitText, margin, margin + 20);
+        
+        // 转换成文件
+        const pdfBlob = textPdf.output('blob');
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const fileName = `简历文本版_${timestamp}.pdf`;
+        
+        const file = new File([pdfBlob], fileName, {
+          type: 'application/pdf',
+          lastModified: new Date().getTime()
+        });
+        
+        console.log(`成功创建文本版PDF文件: ${fileName}, 大小: ${file.size} 字节`);
+        status.textContent = '文本版PDF生成成功';
+        return file;
       }
       
       // 转换成文件
@@ -491,6 +644,25 @@ const convertOnlineResumeToFile = async (status: HTMLElement): Promise<File | nu
   }
 };
 
+// 提取元素中的文本内容
+function extractTextContent(element: HTMLElement): string {
+  // 创建一个克隆，避免修改原始元素
+  const clone = element.cloneNode(true) as HTMLElement;
+  
+  // 移除所有脚本和样式元素
+  const scriptsAndStyles = clone.querySelectorAll('script, style');
+  scriptsAndStyles.forEach(el => el.remove());
+  
+  // 将换行符和制表符转换为空格
+  let text = clone.innerText || clone.textContent || '';
+  
+  // 清理文本
+  text = text.replace(/[\t\n]+/g, '\n')  // 将多个制表符和换行符替换为单个换行符
+             .replace(/\s{2,}/g, ' ')    // 将多个空格替换为单个空格
+             .trim();                    // 移除首尾空格
+  
+  return text;
+}
 
 // 辅助函数：将Data URL转换为Blob
 function dataURLtoBlob(dataurl: string): Blob {
@@ -506,7 +678,7 @@ function dataURLtoBlob(dataurl: string): Blob {
 }
 
 // 处理在线简历上传
-const handleOnlineResumeUpload = async (file: File, jobTitle: string, status: HTMLElement) => {
+const handleOnlineResumeUpload = async (file: File, status: HTMLElement) => {
   try {
     status.textContent = '正在入库...';
     console.log('准备发送在线简历请求，文件大小:', file.size, '文件名:', file.name);
@@ -524,6 +696,8 @@ const handleOnlineResumeUpload = async (file: File, jobTitle: string, status: HT
     const formData = new FormData();
     formData.append('file', file);
     formData.append('deliveryChannel', 'BOSS直聘');
+    // 获取职位名称
+    const jobTitle = getJobTitle();
     formData.append('deliveryPosition', jobTitle);
     console.log('发送请求到服务器，职位:', jobTitle);
 
@@ -544,6 +718,18 @@ const handleOnlineResumeUpload = async (file: File, jobTitle: string, status: HT
 
     if (response.ok) {
       status.textContent = '入库成功！';
+      
+      // 如果上传成功并返回了recordId，开始轮询评估接口
+      if (responseData.success && responseData.data && responseData.data.data && responseData.data.data.recordId) {
+        status.textContent = '正在评估简历...';
+        console.log('开始轮询评估接口，recordId:', responseData.data.data.recordId);
+        const evalResult = await pollResumeEvaluation(responseData.data.data.recordId, token);
+        if (evalResult) {
+          // 显示评估结果浮窗
+          showEvaluationResultWindow(evalResult, jobTitle);
+        }
+      }
+      
       return true;
     } else {
       // 处理服务器返回的错误信息
@@ -587,9 +773,30 @@ const main = async () => {
     const onlineResumeElements = [
       document.querySelector('.resume-detail'),
       document.querySelector('.resume-content'),
-      document.querySelector('.resume-detail-chat')
+      document.querySelector('.resume-detail-chat'),
+      document.querySelector('.resume-detail-wrap'),   // 路由 /recommend 下的在线简历
+      document.querySelector('.resume-center-side'),   // 路由 /recommend 下的在线简历
+      document.querySelector('.resume-middle-wrap'),   // 路由 /recommend 下的在线简历
+      document.querySelector('.resume-layout-wrap')   // 路由 /recommend 下的在线简历
     ];
     
+    // 额外检查iframe中的.resume-detail-wrap元素
+    const iframesForResume = document.querySelectorAll('iframe');
+    iframesForResume.forEach((iframe, index) => {
+      try {
+        if (iframe.contentDocument) {
+          const resumeDetailWrap = iframe.contentDocument.querySelector('.resume-detail-wrap');
+          if (resumeDetailWrap) {
+            console.log(`在iframe ${index}中找到.resume-detail-wrap元素`);
+            onlineResumeElements.push(resumeDetailWrap);
+          }
+        }
+      } catch (e) {
+        // 跨域错误，忽略
+      }
+    });
+    
+    console.log(onlineResumeElements)
     console.log('PDF查看器元素检测结果:', pdfViewerElements.map(el => !!el));
     console.log('在线简历元素检测结果:', onlineResumeElements.map(el => !!el));
     
@@ -796,166 +1003,35 @@ const main = async () => {
     return false;
   };
 
-  // 检查PDF查看器是否存在，若存在则显示浮窗
-  const checkPdfViewer = () => {
-    // 添加调试日志
-    console.log('正在检查PDF查看器元素...');
-
-    // 检测当前简历类型
-    const type = detectResumeType();
-    console.log('检测到简历类型:', type);
-    
-    // 无论是哪种类型的简历，只要能识别出来就显示浮窗
-    if (type !== 'unknown') {
-      console.log('找到简历，显示浮窗');
-      floatingWindow.style.display = 'block';
-      
-      // 获取职位信息
-      jobTitle = getJobTitle();
-      console.log('当前职位:', jobTitle);
-      
-      // 如果是附件简历，添加下载按钮拦截器
-      if (type === 'attachment') {
-        // 查找所有可能的下载按钮
-        console.log('开始查找各种可能的下载按钮...');
-        
-        // 直接查找指定的下载按钮
-        const downloadButtons = document.querySelectorAll('.attachment-resume-btns .popover.icon-content.popover-bottom');
-        console.log('找到指定结构的下载按钮数量:', downloadButtons.length);
-        
-        // 查找任何包含"下载"文本的元素
-        const textDownloadButtons = Array.from(document.querySelectorAll('*'))
-          .filter(el => 
-            el.textContent && 
-            el.textContent.includes('下载') && 
-            el.textContent.length < 20 && // 避免选中包含大段文本的元素
-            !el.hasAttribute('data-intercepted')
-          );
-        console.log('包含"下载"文本的按钮数量:', textDownloadButtons.length);
-        
-        // 查找任何可能是下载按钮的元素
-        const allPossibleDownloadButtons = [
-          ...Array.from(document.querySelectorAll('[class*="download"], [id*="download"], [aria-label*="下载"]')),
-          ...Array.from(document.querySelectorAll('svg[data-icon="download"], button[title*="下载"], a[title*="下载"]')),
-          ...Array.from(document.querySelectorAll('[class*="attach"], [id*="attach"], [class*="resume-action"]')),
-          ...Array.from(document.querySelectorAll('[class*="pdf-action"], [class*="pdf-tool"], [class*="tool-item"]'))
-        ].filter(el => !el.hasAttribute('data-intercepted'));
-        
-        console.log('所有可能的下载按钮元素数量:', allPossibleDownloadButtons.length);
-        
-        // 处理所有找到的下载按钮
-        const handleAllButtons = (buttons, description) => {
-          console.log(`处理${description}，数量:`, buttons.length);
-          buttons.forEach((button, index) => {
-            if (!button.hasAttribute('data-intercepted')) {
-              console.log(`为${description} #${index}添加点击拦截器:`, button);
-              button.setAttribute('data-intercepted', 'true');
-              
-              button.addEventListener('click', (event) => {
-                console.log(`${description} #${index}被点击`);
-                // 等待拦截器捕获URL
-                setTimeout(() => {
-                  if (capturedPdfUrl) {
-                    console.log('捕获到PDF URL:', capturedPdfUrl);
-                    pdfUrl = capturedPdfUrl;
-                    filename = `简历_${jobTitle}_${new Date().getTime()}.pdf`;
-                  } else {
-                    console.log('未能捕获PDF URL');
-                    createToast('无法自动获取PDF，请手动下载后通过扩展上传');
-                  }
-                }, 5000);
-              });
-            }
-          });
-        };
-        
-        // 处理所有类型的下载按钮
-        handleAllButtons(downloadButtons, '指定结构下载按钮');
-        handleAllButtons(textDownloadButtons, '包含下载文本的按钮');
-        handleAllButtons(allPossibleDownloadButtons, '可能的下载按钮');
-      }
-    } else {
-      console.log('未找到简历内容, 浮窗将保持隐藏状态');
-      floatingWindow.style.display = 'none';
-    }
-  };
-
-  // 检查iframe中的内容
-  const checkIframes = () => {
-    const iframes = document.querySelectorAll('iframe');
-    console.log('页面中的iframe数量:', iframes.length);
-    
-    // 查找简历iframe
-    const resumeIframes = document.querySelectorAll('iframe.attachment-iframe, iframe.attachment-box');
-    if (resumeIframes.length > 0) {
-      console.log('找到简历iframe，显示浮窗');
-      floatingWindow.style.display = 'block';
-      
-      // 获取职位信息
-      jobTitle = getJobTitle();
-      console.log('当前职位:', jobTitle);
-      
-      // 移除自动下载调用
-      // setTimeout(autoDownloadAndUpload, 1000);
-      return;
-    }
-    
-    iframes.forEach((iframe, index) => {
-      try {
-        if (iframe.contentDocument) {
-          console.log(`检查iframe ${index}的内容`);
-          const pdfInIframe = 
-            iframe.contentDocument.querySelector('#viewer.pdfViewer') ||  // 优先匹配id="viewer" class="pdfViewer"
-            iframe.contentDocument.querySelector('.pdfViewer') ||
-            iframe.contentDocument.querySelector('[id="viewer"]') ||
-            iframe.contentDocument.querySelector('[class*="pdfViewer"]') ||
-            // 为iframe内容添加相同的新选择器
-            iframe.contentDocument.querySelector('div#viewer.pdfViewer') ||
-            iframe.contentDocument.querySelector('div.pdfViewer > div.page[data-page-number="1"]') ||
-            iframe.contentDocument.querySelector('div.pdfViewer > div.page > div.canvasWrapper > canvas');
-          
-          if (pdfInIframe) {
-            console.log(`在iframe ${index}中找到PDF查看器`);
-            floatingWindow.style.display = 'block';
-            
-            // 获取职位信息
-            jobTitle = getJobTitle();
-            console.log('当前职位:', jobTitle);
-            
-            // 移除自动下载调用
-            // setTimeout(autoDownloadAndUpload, 1000);
-          }
-        }
-      } catch (e) {
-        console.log(`无法访问iframe ${index}的内容:`, e);
-      }
-    });
-  };
-
   // 进行多次检查，有时DOM可能需要时间加载
   const performMultipleChecks = () => {
     console.log('开始执行多次检查');
     // 立即检查
-    checkPdfViewer();
-    checkIframes();
+    // 直接显示浮窗，无需检测简历类型
+      floatingWindow.style.display = 'block';
+      
+      // 获取职位信息
+      jobTitle = getJobTitle();
+      console.log('当前职位:', jobTitle);
     
     // 然后在500ms, 1000ms, 2000ms, 5000ms后再次检查
     const checkTimes = [500, 1000, 2000, 5000];
     checkTimes.forEach(time => {
       setTimeout(() => {
-        console.log(`${time}ms后再次检查PDF查看器`);
-        checkPdfViewer();
-        checkIframes();
+        console.log(`${time}ms后再次检查`);
+        // 更新职位信息
+        jobTitle = getJobTitle();
+        console.log(`${time}ms后更新职位:`, jobTitle);
       }, time);
     });
   };
 
   // 监听页面变化
   const observer = new MutationObserver((mutations) => {
-    console.log('检测到DOM变化，重新检查PDF查看器');
-    // 检查是否应该显示浮窗
-    checkPdfViewer();
-    checkIframes();
+    console.log('检测到DOM变化，更新职位信息');
+    // 更新职位信息
+    jobTitle = getJobTitle();
+    console.log('DOM变化后的职位:', jobTitle);
   });
 
   // 监听整个文档的变化，以及子元素的变化
@@ -975,6 +1051,9 @@ const main = async () => {
     
     console.log('上传按钮被点击');
     setIsProcessing(true);
+    
+    // 延迟一小段时间再检测简历类型，确保DOM已完全加载
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     // 重新检测简历类型
     const currentResumeType = detectResumeType();
@@ -1000,10 +1079,6 @@ const main = async () => {
         }
       }, 2000); // 增加等待时间，确保有足够时间捕获URL
     } else if (currentResumeType === 'online') {
-      // // 不处理在线简历
-      // // 显示提示，暂不支持处理在线简历
-      // createToast('暂不支持处理在线简历');
-      // setIsProcessing(false);
       // 处理在线简历
       console.log('处理在线简历，开始转换为PDF');
       createToast('正在处理在线简历...');
@@ -1013,11 +1088,8 @@ const main = async () => {
         const resumeFile = await convertOnlineResumeToFile(status);
         
         if (resumeFile) {
-          // 获取职位信息
-          const currentJobTitle = getJobTitle();
-          
           // 上传处理后的简历文件
-          const success = await handleOnlineResumeUpload(resumeFile, currentJobTitle, status);
+          const success = await handleOnlineResumeUpload(resumeFile, status);
           
           if (success) {
             createToast('入库成功！');
@@ -1034,6 +1106,11 @@ const main = async () => {
           setIsProcessing(false);
         }, 3000);
       }
+    } else {
+      // 未检测到简历
+      console.log('未检测到简历内容');
+      createToast('未找到简历内容，请确保简历已打开');
+      setIsProcessing(false);
     }
   });
   
@@ -1109,53 +1186,470 @@ if (document.readyState === 'loading') {
 window.addEventListener('load', () => {
   console.log('window.load事件触发，确保简历已被检测');
   
-  // 创建一个暂时的检测函数以避免重复导入
-  const tempDetectResume = () => {
-    // 检查是否有PDF查看器元素
-    const pdfViewerElements = [
-      document.querySelector('#viewer.pdfViewer'),
-      document.querySelector('.pdfViewer'),
-      document.querySelector('#viewer'),
-      document.querySelector('div#viewer.pdfViewer'),
-      document.querySelector('div.pdfViewer > div.page')
-    ];
-    
-    // 检查是否有在线简历元素
-    const onlineResumeElements = [
-      document.querySelector('.resume-detail'),
-      document.querySelector('.resume-content'),
-      document.querySelector('.resume-detail-chat')
-    ];
+  // 确保浮窗显示
+  console.log('window.load事件触发，确保浮窗显示');
+  const floatingWindows = document.querySelectorAll('div[style*="position: fixed"]');
+  if (floatingWindows.length === 0) {
+    console.log('未检测到已有浮窗，重新运行main');
+    main();
+  } else {
+    console.log('已检测到浮窗，无需重新运行main');
+  }
+});
 
-    // 检查iframe中的PDF查看器
+// 寻找打招呼按钮
+const findGreetButton = () => {
+  if (window.location.pathname.includes('/search')) {
+    console.log('在search页面寻找打招呼按钮')
+    const greetButton = document.querySelector(".boss-dialog__body .prop-card-chat");
+    return greetButton;
+    // // 在iframe中寻找
+    // const iframes = document.querySelectorAll('iframe');
+    // for (const iframe of iframes) {
+    //   const greetButton = iframe.contentDocument.querySelector('.prop-card-chat');
+    //   if (greetButton) {
+    //     return greetButton;
+    //   }
+    // }
+  } else if (window.location.pathname.includes('/recommend')) {
+    console.log('在recommend页面寻找打招呼按钮')
+    // const greetButton = document.querySelector(".boss-dialog__body .btn-v2.btn-sure-v2.btn-greet");
+    // return greetButton;
+    // 在iframe中寻找
     const iframes = document.querySelectorAll('iframe');
-    let hasPdfInIframe = false;
-    
-    iframes.forEach((iframe) => {
-      try {
-        if (iframe.contentDocument) {
-          const pdfInIframe = iframe.contentDocument.querySelector('#viewer.pdfViewer, .pdfViewer, #viewer');
-          if (pdfInIframe) {
-            hasPdfInIframe = true;
-          }
-        }
-      } catch (e) {
-        // 跨域错误，忽略
+    for (const iframe of iframes) {
+      const greetButton = iframe.contentDocument.querySelector('.btn-sure-v2.btn-greet');
+      if (greetButton) {
+        return greetButton;
       }
+    }
+  }
+  return null;
+}
+
+// 轮询简历评估接口
+const pollResumeEvaluation = async (recordId: string, token: string, maxRetries = 20, maxInterval = 15000): Promise<any> => {
+  console.log(`开始轮询简历评估接口，recordId: ${recordId}`);
+  let retryCount = 0;
+  
+  return new Promise((resolve, reject) => {
+    const pollInterval = setInterval(async () => {
+      if (retryCount >= maxRetries) {
+        clearInterval(pollInterval);
+        console.log('轮询次数达到上限，停止轮询');
+        resolve(null);
+        return;
+      }
+
+      retryCount++;
+      console.log(`轮询简历评估接口第 ${retryCount} 次`);
+      
+      try {
+        const response = await fetch(`${envConfig.API_BASE_URL}/resume/eval?resumeId=${recordId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          mode: 'cors'
+        });
+        
+        const result = await response.json();
+        console.log('评估接口响应:', result);
+        
+        // 外层success表示请求成功，内层data.success表示评估完成
+        if (result.success && result.data && result.data.success) {
+          // 评估成功，停止轮询
+          clearInterval(pollInterval);
+          console.log('评估成功，停止轮询:', result);
+          
+          // 如果界面路由包含"https://www.zhipin.com/web/chat/index"，不进行自动沟通
+          if (window.location.href.includes('https://www.zhipin.com/web/chat/index')) {
+            console.log('当前界面是chat/index，不进行自动沟通');
+            resolve(result.data.evalInfo);
+            return;
+          }
+          
+          // 检查推荐等级，如果是"推荐"或"强烈推荐"，自动点击"打招呼"按钮
+          if (result.data.evalInfo && result.data.evalInfo.recommendLevel) {
+            const recommendLevel = result.data.evalInfo.recommendLevel;
+            if (recommendLevel === "推荐" || recommendLevel === "强烈推荐") {
+              console.log('推荐等级符合要求，尝试自动点击"打招呼"按钮:', recommendLevel);
+              
+              // 查找并点击"打招呼"按钮
+              setTimeout(() => {
+                const greetButton = findGreetButton();
+                
+                if (greetButton) {
+                  console.log('找到"打招呼"按钮，自动点击');
+                  console.log('自动点击的按钮 greetButton', greetButton);
+                  // TODO 复原
+                  (greetButton as HTMLButtonElement).click();
+                  createToast('已根据AI评估自动点击"打招呼"按钮');
+                } else {
+                  console.log('未找到"打招呼"按钮');
+                }
+              }, 500); // 延迟500ms确保DOM已完全加载
+            } else {
+              console.log('推荐等级不符合自动沟通要求:', recommendLevel);
+            }
+          }
+          
+          resolve(result.data.evalInfo);
+        } else {
+          // 继续轮询
+          const message = result.data?.message || '评估中...';
+          console.log('评估中，继续轮询:', message);
+        }
+      } catch (error) {
+        console.error('轮询请求出错:', error);
+        // 发生错误，但仍继续轮询
+      }
+    }, maxInterval); // 使用配置的轮询间隔
+  });
+};
+
+// 安全地解析Markdown内容
+function safeMarkdownParse(markdownText: string): string {
+  try {
+    // 配置marked选项，确保安全性
+    marked.setOptions({
+      gfm: true, // 支持GitHub风格Markdown
+      breaks: true // 支持换行符转换为<br>
     });
     
-    return {
-      hasAttachment: pdfViewerElements.some(el => !!el) || hasPdfInIframe,
-      hasOnline: onlineResumeElements.some(el => !!el)
-    };
-  };
-  
-  const resumeCheck = tempDetectResume();
-  console.log('load事件中的简历检测结果:', resumeCheck);
-  
-  // 如果检测到任何类型的简历，重新运行main
-  if (resumeCheck.hasAttachment || resumeCheck.hasOnline) {
-    console.log('在load事件中发现简历内容，重新运行main');
-    main();
+    // 解析Markdown为HTML
+    const parsedHtml = marked.parse(markdownText) as string;
+    
+    // 简单的HTML清理，移除潜在的危险标签和属性
+    const cleanHtml = parsedHtml
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // 移除script标签
+      .replace(/on\w+="[^"]*"/g, '') // 移除on*事件处理器
+      .replace(/javascript:[^"']*/g, ''); // 移除javascript: URL
+    
+    return cleanHtml;
+  } catch (error) {
+    console.error('Markdown解析失败:', error);
+    // 如果解析失败，以纯文本形式返回原始内容
+    return markdownText
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
-}); 
+}
+
+// 显示评估结果浮窗
+const showEvaluationResultWindow = (evalInfo: any, jobTitle: string) => {
+  console.log('显示评估结果浮窗:', evalInfo);
+  
+  // 移除可能已存在的评估结果浮窗
+  const existingWindow = document.getElementById('resume-evaluation-window');
+  if (existingWindow) {
+    existingWindow.remove();
+  }
+  
+  // 创建评估结果浮窗
+  const evalWindow = document.createElement('div');
+  evalWindow.id = 'resume-evaluation-window';
+  evalWindow.style.cssText = `
+    position: fixed;
+    right: 30px;
+    bottom: 20px;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    z-index: 9999;
+    width: 280px;
+    max-width: 90vw;
+    max-height: 60vh;
+    overflow-y: auto;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+  `;
+  
+  // 添加标题
+  const titleElement = document.createElement('div');
+  titleElement.textContent = '推鲤 AI 简历评估';
+  titleElement.style.cssText = `
+    font-weight: bold;
+    font-size: 16px;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    color: #333;
+    flex-shrink: 0;
+  `;
+  
+  // 创建内容容器，允许滚动
+  const contentDiv = document.createElement('div');
+  contentDiv.style.cssText = `
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 5px;
+  `;
+  
+  // 添加推荐等级
+  if (evalInfo.recommendLevel) {
+    const recommendLevelDiv = document.createElement('div');
+    recommendLevelDiv.style.cssText = `
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+    `;
+    
+    const recommendLevelTitle = document.createElement('span');
+    recommendLevelTitle.textContent = '推荐等级: ';
+    recommendLevelTitle.style.cssText = `
+      font-weight: bold;
+      margin-right: 5px;
+    `;
+    
+    const recommendLevelValue = document.createElement('span');
+    recommendLevelValue.textContent = evalInfo.recommendLevel || '无';
+    
+    // 根据推荐等级设置不同的颜色
+    if (evalInfo.recommendLevel.includes('强烈推荐')) {
+      recommendLevelValue.style.color = '#52c41a'; // 绿色
+    } else if (evalInfo.recommendLevel.includes('推荐')) {
+      recommendLevelValue.style.color = '#1677ff'; // 蓝色
+    } else if (evalInfo.recommendLevel.includes('不推荐')) {
+      recommendLevelValue.style.color = '#ff4d4f'; // 红色
+    } else if (evalInfo.recommendLevel.includes('待定')) {
+      recommendLevelValue.style.color = '#faad14'; // 黄色/橙色
+    }
+    
+    recommendLevelDiv.appendChild(recommendLevelTitle);
+    recommendLevelDiv.appendChild(recommendLevelValue);
+    contentDiv.appendChild(recommendLevelDiv);
+  }
+  
+  // 添加匹配度
+  if (evalInfo.matchDegree) {
+    const matchDegreeDiv = document.createElement('div');
+    matchDegreeDiv.style.cssText = `
+      margin-bottom: 15px;
+      display: flex;
+      flex-direction: column;
+    `;
+    
+    // 匹配度标签和数值
+    const matchHeader = document.createElement('div');
+    matchHeader.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+    `;
+    
+    const matchDegreeTitle = document.createElement('span');
+    matchDegreeTitle.textContent = '职位匹配度:';
+    matchDegreeTitle.style.cssText = `
+      font-weight: bold;
+    `;
+    
+    const matchDegreeValue = document.createElement('span');
+    matchDegreeValue.textContent = evalInfo.matchDegree || '无';
+    matchDegreeValue.style.cssText = `
+      font-weight: bold;
+    `;
+    
+    // 根据匹配度百分比设置颜色
+    const percentage = parseInt(evalInfo.matchDegree.replace('%', '').trim(), 10);
+    if (percentage >= 80) {
+      matchDegreeValue.style.color = '#52c41a'; // 绿色 - 高匹配
+    } else if (percentage >= 60) {
+      matchDegreeValue.style.color = '#1677ff'; // 蓝色 - 中等匹配
+    } else if (percentage >= 40) {
+      matchDegreeValue.style.color = '#faad14'; // 黄色 - 低匹配
+    } else {
+      matchDegreeValue.style.color = '#ff4d4f'; // 红色 - 很低匹配
+    }
+    
+    matchHeader.appendChild(matchDegreeTitle);
+    matchHeader.appendChild(matchDegreeValue);
+    matchDegreeDiv.appendChild(matchHeader);
+    
+    // 创建进度条
+    const progressContainer = document.createElement('div');
+    progressContainer.style.cssText = `
+      width: 100%;
+      height: 8px;
+      background-color: #f0f0f0;
+      border-radius: 4px;
+      overflow: hidden;
+    `;
+    
+    const progressBar = document.createElement('div');
+    progressBar.style.cssText = `
+      width: ${evalInfo.matchDegree};
+      height: 100%;
+      border-radius: 4px;
+    `;
+    
+    // 渐变色进度条
+    if (percentage >= 80) {
+      progressBar.style.backgroundColor = '#52c41a';
+    } else if (percentage >= 60) {
+      progressBar.style.backgroundColor = '#1677ff';
+    } else if (percentage >= 40) {
+      progressBar.style.backgroundColor = '#faad14';
+    } else {
+      progressBar.style.backgroundColor = '#ff4d4f';
+    }
+    
+    progressContainer.appendChild(progressBar);
+    matchDegreeDiv.appendChild(progressContainer);
+    contentDiv.appendChild(matchDegreeDiv);
+  }
+  
+  // 添加评估结果
+  if (evalInfo.evalResult) {
+    const evalResultDiv = document.createElement('div');
+    evalResultDiv.style.cssText = `
+      margin-bottom: 12px;
+    `;
+    
+    const evalResultTitle = document.createElement('div');
+    evalResultTitle.textContent = 'AI 评估结果:';
+    evalResultTitle.style.cssText = `
+      font-weight: bold;
+      margin-bottom: 5px;
+    `;
+    
+    const evalResultValue = document.createElement('div');
+    // 使用安全的方法解析Markdown内容
+    evalResultValue.innerHTML = safeMarkdownParse(evalInfo.evalResult);
+    evalResultValue.style.cssText = `
+      line-height: 1.5;
+      color: #666;
+      background-color: #f5f5f5;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 13px;
+    `;
+    
+    // 添加Markdown样式
+    evalResultValue.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+    
+    // 设置内部元素的样式
+    const styleElement = document.createElement('style');
+    styleElement.textContent = `
+      #resume-evaluation-window .markdown-content h1, 
+      #resume-evaluation-window .markdown-content h2, 
+      #resume-evaluation-window .markdown-content h3 {
+        margin-top: 8px;
+        margin-bottom: 8px;
+        font-weight: 600;
+        line-height: 1.25;
+      }
+      #resume-evaluation-window .markdown-content h1 { font-size: 16px; }
+      #resume-evaluation-window .markdown-content h2 { font-size: 15px; }
+      #resume-evaluation-window .markdown-content h3 { font-size: 14px; }
+      #resume-evaluation-window .markdown-content p { margin: 5px 0; }
+      #resume-evaluation-window .markdown-content ul, 
+      #resume-evaluation-window .markdown-content ol {
+        padding-left: 20px;
+        margin: 5px 0;
+      }
+      #resume-evaluation-window .markdown-content li { margin: 3px 0; }
+      #resume-evaluation-window .markdown-content strong { font-weight: 600; }
+      #resume-evaluation-window .markdown-content em { font-style: italic; }
+      #resume-evaluation-window .markdown-content code {
+        font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+        background-color: rgba(0,0,0,0.05);
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-size: 12px;
+      }
+      #resume-evaluation-window .markdown-content pre {
+        background-color: rgba(0,0,0,0.05);
+        padding: 8px;
+        border-radius: 3px;
+        overflow-x: auto;
+      }
+      #resume-evaluation-window .markdown-content blockquote {
+        margin: 5px 0;
+        padding-left: 10px;
+        border-left: 3px solid #ddd;
+        color: #777;
+      }
+      #resume-evaluation-window .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 10px 0;
+        font-size: 12px;
+      }
+      #resume-evaluation-window .markdown-content th,
+      #resume-evaluation-window .markdown-content td {
+        border: 1px solid #ddd;
+        padding: 4px 8px;
+        text-align: left;
+      }
+      #resume-evaluation-window .markdown-content th {
+        background-color: #f0f0f0;
+        font-weight: bold;
+      }
+      #resume-evaluation-window .markdown-content tr:nth-child(even) {
+        background-color: #f9f9f9;
+      }
+      #resume-evaluation-window .markdown-content a {
+        color: #1677ff;
+        text-decoration: none;
+      }
+      #resume-evaluation-window .markdown-content a:hover {
+        text-decoration: underline;
+      }
+      #resume-evaluation-window .markdown-content img {
+        max-width: 100%;
+        height: auto;
+      }
+    `;
+    document.head.appendChild(styleElement);
+    
+    // 添加类名便于样式定位
+    evalResultValue.classList.add('markdown-content');
+    
+    evalResultDiv.appendChild(evalResultTitle);
+    evalResultDiv.appendChild(evalResultValue);
+    contentDiv.appendChild(evalResultDiv);
+  }
+  
+  // 创建关闭按钮
+  const closeButton = document.createElement('button');
+  closeButton.textContent = '×';
+  closeButton.style.cssText = `
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background-color: transparent;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: #999;
+    padding: 0;
+    line-height: 1;
+    z-index: 1;
+  `;
+  
+  closeButton.addEventListener('click', () => {
+    evalWindow.remove();
+  });
+  
+  evalWindow.appendChild(titleElement);
+  evalWindow.appendChild(contentDiv);
+  evalWindow.appendChild(closeButton);
+  
+  document.body.appendChild(evalWindow);
+  
+  // 添加淡入动画
+  evalWindow.style.opacity = '0';
+  evalWindow.style.transition = 'opacity 0.3s ease-in-out';
+  setTimeout(() => {
+    evalWindow.style.opacity = '1';
+  }, 10);
+}; 

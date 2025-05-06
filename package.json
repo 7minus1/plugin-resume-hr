@@ -1,7 +1,7 @@
 {
   "name": "tuiliai-quick-hire",
   "displayName": "推鲤AI快聘",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "推鲤AI快聘 - 智能简历解析与人才匹配助手",
   "author": "",
   "scripts": {

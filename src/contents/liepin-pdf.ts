@@ -4,9 +4,10 @@ import type { PlasmoCSConfig } from "plasmo"
 import { config as envConfig } from '../config/env';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { marked } from 'marked';
 
 export const config: PlasmoCSConfig = {
-  matches: ["https://lpt.liepin.com/chat/im*"],
+  matches: ["https://lpt.liepin.com/*"],
   all_frames: true,
   run_at: "document_end"
 }
@@ -145,6 +146,52 @@ const observeTargetContainer = () => {
 // 启动监听
 observeTargetContainer()
 
+// 提取职位名称的函数
+const getJobTitle = (): string => {
+  let jobTitle = '未知岗位';
+  
+  if (window.location.href.includes('https://lpt.liepin.com/chat/im')) {
+    // IM页面职位获取逻辑
+    jobTitle = document.querySelector('.ant-im-btn-link span')?.textContent?.trim() || '未知岗位';
+  } else if (window.location.href.includes('https://lpt.liepin.com/recommend')) {
+    // 推荐页面职位获取逻辑
+    jobTitle = document.querySelector('.ant-lpt-typography-ellipsis-single-line[title]')?.textContent?.trim() || '未知岗位';
+  } else if (window.location.href.includes('https://lpt.liepin.com/search')) {
+    // 搜索页面的职位获取逻辑
+    // 首先尝试从下拉选择器中获取
+    const dropdownTrigger = document.querySelector('.ant-lpt-dropdown-trigger.dropdown-button');
+    if (dropdownTrigger) {
+      const jobTitleElement = dropdownTrigger.querySelector('.job-title');
+      if (jobTitleElement && jobTitleElement.textContent) {
+        jobTitle = jobTitleElement.textContent.trim();
+      }
+    }
+    
+    // 如果上面的方法没获取到，尝试更复杂的选择器
+    if (jobTitle === '未知岗位') {
+      const complexSelector = '#main-container > section > section > main > div > div > div.searchBarBox--IpmLs.fixed--f1zcW > div > div > div > div > div.selectJobWrap--Kwt2i.hide--DhpnJ > div.search-page-select-jobs-wrap.wrap--v6U9j > div.ant-lpt-dropdown-trigger.dropdown-button > div';
+      const jobElement = document.querySelector(complexSelector);
+      if (jobElement && jobElement.textContent) {
+        jobTitle = jobElement.textContent.trim();
+      }
+    }
+    
+    // 如果上面的方法都没获取到，尝试查找任何包含job-title类的元素
+    if (jobTitle === '未知岗位') {
+      const allJobTitles = document.querySelectorAll('.job-title');
+      for (const element of allJobTitles) {
+        if (element.textContent && element.textContent.trim()) {
+          jobTitle = element.textContent.trim();
+          break;
+        }
+      }
+    }
+  }
+  
+  console.log('获取到职位名称:', jobTitle);
+  return jobTitle;
+};
+
 // 处理PDF上传
 const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLElement) => {
   try {
@@ -197,7 +244,8 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
       const formData = new FormData()
       formData.append('file', file)
       formData.append('deliveryChannel', '猎聘')
-      const jobTitle = document.querySelector('.ant-im-btn-link span')?.textContent?.trim() || '未知岗位'
+      // 获取职位名称
+      const jobTitle = getJobTitle();
       formData.append('deliveryPosition', jobTitle)
       console.log('发送请求到服务器，职位:', jobTitle)
 
@@ -218,6 +266,17 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
 
       if (response.ok) {
         status.textContent = '入库成功！'
+        
+        // 如果上传成功并返回了recordId，开始轮询评估接口
+        if (result.success && result.data && result.data.data.recordId) {
+          status.textContent = '正在评估简历...'
+          const evalResult = await pollResumeEvaluation(result.data.data.recordId, token)
+          if (evalResult) {
+            // 显示评估结果浮窗
+            showEvaluationResultWindow(evalResult, jobTitle)
+          }
+        }
+        
         return true
       } else {
         // 处理服务器返回的错误信息
@@ -467,7 +526,8 @@ const handleOnlineResumeUpload = async (file: File, status: HTMLElement) => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('deliveryChannel', '猎聘');
-    const jobTitle = document.querySelector('.ant-im-btn-link span')?.textContent?.trim() || '未知岗位';
+    // 获取职位名称
+    const jobTitle = getJobTitle();
     formData.append('deliveryPosition', jobTitle);
     console.log('发送请求到服务器，职位:', jobTitle);
 
@@ -488,6 +548,20 @@ const handleOnlineResumeUpload = async (file: File, status: HTMLElement) => {
 
     if (response.ok) {
       status.textContent = '入库成功！';
+      console.log(responseData.data)
+      console.log(responseData.data.data)
+      console.log(responseData.data.data.recordId)
+      
+      // 如果上传成功并返回了recordId，开始轮询评估接口
+      if (responseData.success && responseData.data && responseData.data.data.recordId) {
+        status.textContent = '正在评估简历...';
+        const evalResult = await pollResumeEvaluation(responseData.data.data.recordId, token);
+        if (evalResult) {
+          // 显示评估结果浮窗
+          showEvaluationResultWindow(evalResult, jobTitle);
+        }
+      }
+      
       return true;
     } else {
       // 处理服务器返回的错误信息
@@ -778,6 +852,461 @@ const checkAndHandlePdfLinks = (
     }
   }
 }
+
+// 轮询简历评估接口
+const pollResumeEvaluation = async (recordId: string, token: string, maxRetries = 20, maxInterval = 15000): Promise<any> => {
+  console.log(`开始轮询简历评估接口，recordId: ${recordId}`);
+  let retryCount = 0;
+  
+  return new Promise((resolve, reject) => {
+    const pollInterval = setInterval(async () => {
+      if (retryCount >= maxRetries) {
+        clearInterval(pollInterval);
+        console.log('轮询次数达到上限，停止轮询');
+        resolve(null);
+        return;
+      }
+
+      retryCount++;
+      console.log(`轮询简历评估接口第 ${retryCount} 次`);
+      
+      try {
+        const response = await fetch(`${envConfig.API_BASE_URL}/resume/eval?resumeId=${recordId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          mode: 'cors'
+        });
+        
+        const result = await response.json();
+        console.log('评估接口响应:', result);
+        
+        // 外层success表示请求成功，内层data.success表示评估完成
+        if (result.success && result.data && result.data.success) {
+          // 评估成功，停止轮询
+          clearInterval(pollInterval);
+          console.log('评估成功，停止轮询:', result);
+          
+          // 如果界面路由是/chat/im*, 不进行自动沟通
+          if (window.location.pathname.includes('/chat/im')) {
+            console.log('当前界面是/chat/im*, 不进行自动沟通');
+            resolve(result.data.evalInfo);
+            return;
+          }
+          
+          // 检查推荐等级，如果是"推荐"或"强烈推荐"，自动点击"立即沟通"按钮
+          if (result.data.evalInfo && result.data.evalInfo.recommendLevel) {
+            const recommendLevel = result.data.evalInfo.recommendLevel;
+            if (recommendLevel === "推荐" || 
+              recommendLevel === "强烈推荐") {
+              console.log('推荐等级符合要求，尝试自动点击"立即沟通"按钮:', recommendLevel);
+              
+              // 查找并点击"立即沟通"按钮
+              setTimeout(() => {
+                // 尝试多种选择器查找"立即沟通"按钮
+                let chatButton = document.querySelector('.ant-lpt-tooltip-open button');
+                
+                // 如果第一种选择器没找到，尝试第二种
+                if (!chatButton) {
+                  chatButton = document.querySelector('button.btn--hwfgv.primary--mQh0o');
+                }
+                
+                // 如果上面都没找到，尝试通过文本内容查找
+                if (!chatButton) {
+                  const allButtons = document.querySelectorAll('button');
+                  for (const btn of allButtons) {
+                    if (btn.textContent && btn.textContent.includes('立即沟通')) {
+                      chatButton = btn;
+                      break;
+                    }
+                  }
+                }
+                
+                if (chatButton) {
+                  console.log('找到"立即沟通"按钮，自动点击');
+                  (chatButton as HTMLButtonElement).click();
+                  createToast('已根据AI评估自动点击"立即沟通"按钮');
+                } else {
+                  console.log('未找到"立即沟通"按钮');
+                }
+              }, 500); // 延迟500ms确保DOM已完全加载
+            } else {
+              console.log('推荐等级不符合自动沟通要求:', recommendLevel);
+            }
+          }
+          
+          resolve(result.data.evalInfo);
+        } else {
+          // 继续轮询
+          const message = result.data?.message || '评估中...';
+          console.log('评估中，继续轮询:', message);
+        }
+      } catch (error) {
+        console.error('轮询请求出错:', error);
+        // 发生错误，但仍继续轮询
+      }
+    }, maxInterval); // 使用配置的轮询间隔
+  });
+};
+
+// 安全地解析Markdown内容
+function safeMarkdownParse(markdownText: string): string {
+  try {
+    // 配置marked选项，确保安全性
+    marked.setOptions({
+      gfm: true, // 支持GitHub风格Markdown
+      breaks: true // 支持换行符转换为<br>
+    });
+    
+    // 解析Markdown为HTML
+    const parsedHtml = marked.parse(markdownText) as string;
+    
+    // 简单的HTML清理，移除潜在的危险标签和属性
+    const cleanHtml = parsedHtml
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // 移除script标签
+      .replace(/on\w+="[^"]*"/g, '') // 移除on*事件处理器
+      .replace(/javascript:[^"']*/g, ''); // 移除javascript: URL
+    
+    return cleanHtml;
+  } catch (error) {
+    console.error('Markdown解析失败:', error);
+    // 如果解析失败，以纯文本形式返回原始内容
+    return markdownText
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+}
+
+// 显示评估结果浮窗
+const showEvaluationResultWindow = (evalInfo: any, jobTitle: string) => {
+  console.log('显示评估结果浮窗:', evalInfo);
+  
+  // 移除可能已存在的评估结果浮窗
+  const existingWindow = document.getElementById('resume-evaluation-window');
+  if (existingWindow) {
+    existingWindow.remove();
+  }
+  
+  // 创建评估结果浮窗
+  const evalWindow = document.createElement('div');
+  evalWindow.id = 'resume-evaluation-window';
+  evalWindow.style.cssText = `
+    position: fixed;
+    right: 30px;
+    bottom: 20px;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    z-index: 9999;
+    width: 280px;
+    max-width: 90vw;
+    max-height: 60vh;
+    overflow-y: auto;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+  `;
+  
+  // 添加标题
+  const titleElement = document.createElement('div');
+  titleElement.textContent = '推鲤 AI 简历评估';
+  titleElement.style.cssText = `
+    font-weight: bold;
+    font-size: 16px;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    color: #333;
+    flex-shrink: 0;
+  `;
+  
+  // 创建内容容器，允许滚动
+  const contentDiv = document.createElement('div');
+  contentDiv.style.cssText = `
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 5px;
+  `;
+  
+  // 添加推荐等级
+  if (evalInfo.recommendLevel) {
+    const recommendLevelDiv = document.createElement('div');
+    recommendLevelDiv.style.cssText = `
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+    `;
+    
+    const recommendLevelTitle = document.createElement('span');
+    recommendLevelTitle.textContent = '推荐等级: ';
+    recommendLevelTitle.style.cssText = `
+      font-weight: bold;
+      margin-right: 5px;
+    `;
+    
+    const recommendLevelValue = document.createElement('span');
+    recommendLevelValue.textContent = evalInfo.recommendLevel || '无';
+    
+    // 根据推荐等级设置不同的颜色
+    if (evalInfo.recommendLevel.includes('强烈推荐')) {
+      recommendLevelValue.style.color = '#52c41a'; // 绿色
+    } else if (evalInfo.recommendLevel.includes('推荐')) {
+      recommendLevelValue.style.color = '#1677ff'; // 蓝色
+    } else if (evalInfo.recommendLevel.includes('不推荐')) {
+      recommendLevelValue.style.color = '#ff4d4f'; // 红色
+    } else if (evalInfo.recommendLevel.includes('待定')) {
+      recommendLevelValue.style.color = '#faad14'; // 黄色/橙色
+    }
+    
+    recommendLevelDiv.appendChild(recommendLevelTitle);
+    recommendLevelDiv.appendChild(recommendLevelValue);
+    contentDiv.appendChild(recommendLevelDiv);
+  }
+  
+  // 添加匹配度
+  if (evalInfo.matchDegree) {
+    const matchDegreeDiv = document.createElement('div');
+    matchDegreeDiv.style.cssText = `
+      margin-bottom: 15px;
+      display: flex;
+      flex-direction: column;
+    `;
+    
+    // 匹配度标签和数值
+    const matchHeader = document.createElement('div');
+    matchHeader.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+    `;
+    
+    const matchDegreeTitle = document.createElement('span');
+    matchDegreeTitle.textContent = '职位匹配度:';
+    matchDegreeTitle.style.cssText = `
+      font-weight: bold;
+    `;
+    
+    const matchDegreeValue = document.createElement('span');
+    matchDegreeValue.textContent = evalInfo.matchDegree || '无';
+    matchDegreeValue.style.cssText = `
+      font-weight: bold;
+    `;
+    
+    // 根据匹配度百分比设置颜色
+    const percentage = parseInt(evalInfo.matchDegree.replace('%', '').trim(), 10);
+    if (percentage >= 80) {
+      matchDegreeValue.style.color = '#52c41a'; // 绿色 - 高匹配
+    } else if (percentage >= 60) {
+      matchDegreeValue.style.color = '#1677ff'; // 蓝色 - 中等匹配
+    } else if (percentage >= 40) {
+      matchDegreeValue.style.color = '#faad14'; // 黄色 - 低匹配
+    } else {
+      matchDegreeValue.style.color = '#ff4d4f'; // 红色 - 很低匹配
+    }
+    
+    matchHeader.appendChild(matchDegreeTitle);
+    matchHeader.appendChild(matchDegreeValue);
+    matchDegreeDiv.appendChild(matchHeader);
+    
+    // 创建进度条
+    const progressContainer = document.createElement('div');
+    progressContainer.style.cssText = `
+      width: 100%;
+      height: 8px;
+      background-color: #f0f0f0;
+      border-radius: 4px;
+      overflow: hidden;
+    `;
+    
+    const progressBar = document.createElement('div');
+    progressBar.style.cssText = `
+      width: ${evalInfo.matchDegree};
+      height: 100%;
+      border-radius: 4px;
+    `;
+    
+    // 渐变色进度条
+    if (percentage >= 80) {
+      progressBar.style.backgroundColor = '#52c41a';
+    } else if (percentage >= 60) {
+      progressBar.style.backgroundColor = '#1677ff';
+    } else if (percentage >= 40) {
+      progressBar.style.backgroundColor = '#faad14';
+    } else {
+      progressBar.style.backgroundColor = '#ff4d4f';
+    }
+    
+    progressContainer.appendChild(progressBar);
+    matchDegreeDiv.appendChild(progressContainer);
+    contentDiv.appendChild(matchDegreeDiv);
+  }
+  
+  // 添加评估结果
+  if (evalInfo.evalResult) {
+    const evalResultDiv = document.createElement('div');
+    evalResultDiv.style.cssText = `
+      margin-bottom: 12px;
+    `;
+    
+    const evalResultTitle = document.createElement('div');
+    evalResultTitle.textContent = 'AI 评估结果:';
+    evalResultTitle.style.cssText = `
+      font-weight: bold;
+      margin-bottom: 5px;
+    `;
+    
+    const evalResultValue = document.createElement('div');
+    // 使用安全的方法解析Markdown内容
+    evalResultValue.innerHTML = safeMarkdownParse(evalInfo.evalResult);
+    evalResultValue.style.cssText = `
+      line-height: 1.5;
+      color: #666;
+      background-color: #f5f5f5;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 13px;
+    `;
+    
+    // 添加Markdown样式
+    evalResultValue.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+    
+    // 设置内部元素的样式
+    const styleElement = document.createElement('style');
+    styleElement.textContent = `
+      #resume-evaluation-window .markdown-content h1, 
+      #resume-evaluation-window .markdown-content h2, 
+      #resume-evaluation-window .markdown-content h3 {
+        margin-top: 8px;
+        margin-bottom: 8px;
+        font-weight: 600;
+        line-height: 1.25;
+      }
+      #resume-evaluation-window .markdown-content h1 { font-size: 16px; }
+      #resume-evaluation-window .markdown-content h2 { font-size: 15px; }
+      #resume-evaluation-window .markdown-content h3 { font-size: 14px; }
+      #resume-evaluation-window .markdown-content p { margin: 5px 0; }
+      #resume-evaluation-window .markdown-content ul, 
+      #resume-evaluation-window .markdown-content ol {
+        padding-left: 20px;
+        margin: 5px 0;
+      }
+      #resume-evaluation-window .markdown-content li { margin: 3px 0; }
+      #resume-evaluation-window .markdown-content strong { font-weight: 600; }
+      #resume-evaluation-window .markdown-content em { font-style: italic; }
+      #resume-evaluation-window .markdown-content code {
+        font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+        background-color: rgba(0,0,0,0.05);
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-size: 12px;
+      }
+      #resume-evaluation-window .markdown-content pre {
+        background-color: rgba(0,0,0,0.05);
+        padding: 8px;
+        border-radius: 3px;
+        overflow-x: auto;
+      }
+      #resume-evaluation-window .markdown-content blockquote {
+        margin: 5px 0;
+        padding-left: 10px;
+        border-left: 3px solid #ddd;
+        color: #777;
+      }
+      #resume-evaluation-window .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 10px 0;
+        font-size: 12px;
+      }
+      #resume-evaluation-window .markdown-content th,
+      #resume-evaluation-window .markdown-content td {
+        border: 1px solid #ddd;
+        padding: 4px 8px;
+        text-align: left;
+      }
+      #resume-evaluation-window .markdown-content th {
+        background-color: #f0f0f0;
+        font-weight: bold;
+      }
+      #resume-evaluation-window .markdown-content tr:nth-child(even) {
+        background-color: #f9f9f9;
+      }
+      #resume-evaluation-window .markdown-content a {
+        color: #1677ff;
+        text-decoration: none;
+      }
+      #resume-evaluation-window .markdown-content a:hover {
+        text-decoration: underline;
+      }
+      #resume-evaluation-window .markdown-content img {
+        max-width: 100%;
+        height: auto;
+      }
+    `;
+    document.head.appendChild(styleElement);
+    
+    // 添加类名便于样式定位
+    evalResultValue.classList.add('markdown-content');
+    
+    evalResultDiv.appendChild(evalResultTitle);
+    evalResultDiv.appendChild(evalResultValue);
+    contentDiv.appendChild(evalResultDiv);
+  }
+  
+  // 创建关闭按钮
+  const closeButton = document.createElement('button');
+  closeButton.textContent = '×';
+  closeButton.style.cssText = `
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background-color: transparent;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: #999;
+    padding: 0;
+    line-height: 1;
+    z-index: 1;
+  `;
+  
+  closeButton.addEventListener('click', () => {
+    evalWindow.remove();
+  });
+  
+  evalWindow.appendChild(titleElement);
+  evalWindow.appendChild(contentDiv);
+  evalWindow.appendChild(closeButton);
+  
+  document.body.appendChild(evalWindow);
+  
+  // 添加淡入动画
+  evalWindow.style.opacity = '0';
+  evalWindow.style.transition = 'opacity 0.3s ease-in-out';
+  setTimeout(() => {
+    evalWindow.style.opacity = '1';
+  }, 10);
+  
+  // // 30秒后自动关闭
+  // setTimeout(() => {
+  //   if (document.body.contains(evalWindow)) {
+  //     evalWindow.style.opacity = '0';
+  //     setTimeout(() => {
+  //       if (document.body.contains(evalWindow)) {
+  //         evalWindow.remove();
+  //       }
+  //     }, 300);
+  //   }
+  // }, 30000);
+};
 
 // 确保DOM加载完成后执行
 console.log('Current document readyState:', document.readyState)
