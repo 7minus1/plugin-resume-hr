@@ -151,17 +151,21 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, jobTitle: strin
       if (response.ok) {
         status.textContent = '入库成功！'
         
-        // 如果上传成功并返回了recordId，开始轮询评估接口
-        if (result.success && result.data && result.data.data && result.data.data.recordId) {
-          status.textContent = '正在评估简历...'
-          console.log('开始轮询评估接口，recordId:', result.data.data.recordId)
-          const evalResult = await pollResumeEvaluation(result.data.data.recordId, token)
-          if (evalResult) {
-            // 显示评估结果浮窗
-            showEvaluationResultWindow(evalResult, jobTitle)
+        // 如果是在沟通界面，不进行轮询
+        if (window.location.href.includes('https://www.zhipin.com/web/chat/index')) {
+          console.log('当前界面是chat/index，不进行自动沟通');
+        } else {
+          // 如果上传成功并返回了recordId，开始轮询评估接口
+          if (result.success && result.data && result.data.data && result.data.data.recordId) {
+            status.textContent = '正在评估简历...'
+            console.log('开始轮询评估接口，recordId:', result.data.data.recordId)
+            const evalResult = await pollResumeEvaluation(result.data.data.recordId, token)
+            if (evalResult) {
+              // 显示评估结果浮窗
+              showEvaluationResultWindow(evalResult, jobTitle)
+            }
           }
         }
-        
         return true
       } else {
         // 处理服务器返回的错误信息
