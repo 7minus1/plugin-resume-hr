@@ -363,7 +363,15 @@ const findOnlineResumeContainer = (): HTMLElement | null => {
         // 跨域错误，忽略
       }
     });
-    // 如果找不到iframe中的.resume-detail-wrap元素，则返回null
+    // 如果找不到iframe中的.resume-detail-wrap元素
+    // 继续找 类名为lib-standard-resume的元素
+    if (!resumeContainer) {
+      const libStandardResume = document.querySelector('.lib-standard-resume') as HTMLElement;
+      if (libStandardResume) {
+        console.log('找到.lib-standard-resume元素');
+        resumeContainer = libStandardResume;
+      }
+    }
     return resumeContainer;
   } else if (window.location.pathname.includes('/search')) {
     const resumeContainer = document.querySelector('.resume-detail-wrap') as HTMLElement;
@@ -754,7 +762,9 @@ const main = async () => {
       document.querySelector('.resume-detail-wrap'),   // 路由 /recommend 下的在线简历
       document.querySelector('.resume-center-side'),   // 路由 /recommend 下的在线简历
       document.querySelector('.resume-middle-wrap'),   // 路由 /recommend 下的在线简历
-      document.querySelector('.resume-layout-wrap')   // 路由 /recommend 下的在线简历
+      document.querySelector('.resume-layout-wrap'),   // 路由 /recommend 下的在线简历
+      document.querySelector('.resume-inner-left'),   // 路由 /recommend 下的在线简历
+      document.querySelector('.lib-standard-resume')   // 路由 /recommend 下的在线简历
     ];
     
     // 额外检查iframe中的.resume-detail-wrap元素
