@@ -242,9 +242,18 @@ const handlePdfUpload = async (pdfUrl: string, fileName: string, status: HTMLEle
 
     try {
       // 直接发送请求到服务器
+
+      let deliveryChannel = '猎聘'
+      if (window.location.href.includes('https://lpt.liepin.com/chat/im')) {
+        deliveryChannel = '猎聘-沟通'
+      } else if (window.location.href.includes('https://lpt.liepin.com/recommend')) {
+        deliveryChannel = '猎聘-人才推荐'
+      } else if (window.location.href.includes('https://lpt.liepin.com/search')) {
+        deliveryChannel = '猎聘-搜索人才'
+      }
       const formData = new FormData()
       formData.append('file', file)
-      formData.append('deliveryChannel', '猎聘')
+      formData.append('deliveryChannel', deliveryChannel)
       // 获取职位名称
       const jobTitle = getJobTitle();
       formData.append('deliveryPosition', jobTitle)
@@ -495,10 +504,19 @@ const handleOnlineResumeUpload = async (file: File, status: HTMLElement) => {
       throw new Error('未登录，请先登录');
     }
 
+    // 获取当前页面所在的渠道
+    let deliveryChannel = '猎聘'
+    if (window.location.href.includes('https://lpt.liepin.com/chat/im')) {
+      deliveryChannel = '猎聘-沟通'
+    } else if (window.location.href.includes('https://lpt.liepin.com/recommend')) {
+      deliveryChannel = '猎聘-人才推荐'
+    } else if (window.location.href.includes('https://lpt.liepin.com/search')) {
+      deliveryChannel = '猎聘-搜索人才'
+    }
     // 直接发送请求到服务器
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('deliveryChannel', '猎聘');
+    formData.append('deliveryChannel', deliveryChannel);
     // 获取职位名称
     const jobTitle = getJobTitle();
     formData.append('deliveryPosition', jobTitle);
