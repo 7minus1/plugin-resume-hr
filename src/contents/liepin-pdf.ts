@@ -8,7 +8,7 @@ import { marked } from 'marked';
 import { createToast } from '../lib/ui-utils';
 
 export const config: PlasmoCSConfig = {
-  matches: ["https://www.liepin.com/resume-preview/*"],
+  matches: ["https://lpt.liepin.com/*"],
   all_frames: true,
   run_at: "document_end"
 }
@@ -67,6 +67,7 @@ const createFloatingWindow = async (title = '推鲤 AI 快聘', buttonText = '�
   
   const uploadButton = document.createElement('button')
   uploadButton.textContent = buttonText
+  uploadButton.classList.add('tuili-resume-upload-button')
   uploadButton.style.cssText = `
     background: #ff4500;
     color: white;
@@ -81,6 +82,7 @@ const createFloatingWindow = async (title = '推鲤 AI 快聘', buttonText = '�
   uploadButton.type = 'button'
   
   const status = document.createElement('div')
+  status.classList.add('tuili-resume-upload-status')
   status.style.cssText = `
     margin-top: 10px;
     font-size: 14px;
@@ -571,6 +573,345 @@ const hasOnlineResume = (element: Element): boolean => {
   return !!element.querySelector('.content--dw5Ml');
 };
 
+// 创建自动化控制浮窗
+const createAutoControlWindow = () => {
+  const autoWindow = document.createElement('div');
+  autoWindow.style.cssText = `
+    position: fixed;
+    left: 20px;
+    bottom: 20px;
+    background: white;
+    padding: 12px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    z-index: 9999;
+    display: none;
+    pointer-events: auto;
+    font-size: 13px;
+    min-width: 150px;
+  `;
+
+  const title = document.createElement('div');
+  title.textContent = '自动化控制';
+  title.style.cssText = `
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #333;
+  `;
+
+  // 创建输入框容器
+  const inputContainer = document.createElement('div');
+  inputContainer.style.cssText = `
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 8px;
+  `;
+
+  // 创建起始位置输入框组
+  const startGroup = document.createElement('div');
+  startGroup.style.cssText = `
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  `;
+
+  const startLabel = document.createElement('label');
+  startLabel.textContent = '起始位置';
+  startLabel.style.cssText = `
+    font-size: 12px;
+    color: #666;
+  `;
+
+  const startInput = document.createElement('input');
+  startInput.type = 'number';
+  startInput.min = '1';
+  startInput.value = '1';
+  startInput.style.cssText = `
+    width: 60px;
+    padding: 4px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+  `;
+
+  startGroup.appendChild(startLabel);
+  startGroup.appendChild(startInput);
+
+  // 创建数量输入框组
+  const countGroup = document.createElement('div');
+  countGroup.style.cssText = `
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  `;
+
+  const countLabel = document.createElement('label');
+  countLabel.textContent = '处理数量';
+  countLabel.style.cssText = `
+    font-size: 12px;
+    color: #666;
+  `;
+
+  const countInput = document.createElement('input');
+  countInput.type = 'number';
+  countInput.min = '1';
+  countInput.value = '1';
+  countInput.style.cssText = `
+    width: 60px;
+    padding: 4px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+  `;
+
+  countGroup.appendChild(countLabel);
+  countGroup.appendChild(countInput);
+
+  inputContainer.appendChild(startGroup);
+  inputContainer.appendChild(countGroup);
+
+  // 创建按钮容器
+  const buttonContainer = document.createElement('div');
+  buttonContainer.style.cssText = `
+    display: flex;
+    gap: 8px;
+  `;
+
+  // 创建开始按钮
+  const startButton = document.createElement('button');
+  startButton.textContent = '开始';
+  startButton.style.cssText = `
+    background: #1677ff;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    flex: 1;
+  `;
+
+  // 创建停止按钮
+  const stopButton = document.createElement('button');
+  stopButton.textContent = '停止';
+  stopButton.style.cssText = `
+    background: #ff4d4f;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    flex: 1;
+    display: none;
+  `;
+
+  buttonContainer.appendChild(startButton);
+  buttonContainer.appendChild(stopButton);
+
+  // 创建状态显示
+  const status = document.createElement('div');
+  status.style.cssText = `
+    margin-top: 8px;
+    font-size: 12px;
+    color: #666;
+    text-align: center;
+  `;
+
+  autoWindow.appendChild(title);
+  autoWindow.appendChild(inputContainer);
+  autoWindow.appendChild(buttonContainer);
+  autoWindow.appendChild(status);
+
+  document.body.appendChild(autoWindow);
+
+  return {
+    window: autoWindow,
+    startInput,
+    countInput,
+    startButton,
+    stopButton,
+    status
+  };
+};
+
+// 自动化处理状态
+let isAutoProcessing = false;
+let currentIndex = 0;
+let totalCount = 0;
+let autoControl: ReturnType<typeof createAutoControlWindow>;
+
+// 处理单个候选人
+const processCandidate = async (index: number) => {
+  try {
+    // 获取候选人卡片列表
+    let cards = null;
+
+    console.log('开始查找候选人列表...');
+    
+    if (window.location.pathname.includes('/recommend')) {
+      cards = document.querySelectorAll('.newResumeItem--ppozw');
+    } else if (window.location.pathname.includes('/search')) {
+      const cardList = document.querySelector('ul');
+      if (cardList) {
+        cards = cardList.querySelectorAll('li.resumeCardWrap--FcnzW');
+      }
+    }
+
+    console.log('找到候选人卡片数量:', cards?.length);
+    
+    if (!cards || cards.length === 0) {
+      throw new Error('未找到候选人列表');
+    }
+
+    if (index >= cards.length) {
+      throw new Error('索引超出范围');
+    }
+
+    // 点击候选人卡片
+    const card = cards[index];
+    if (window.location.pathname.includes('/recommend')) {
+      console.log('准备点击第', index + 1, '个候选人卡片');
+      (card as HTMLElement).click();
+    } else if (window.location.pathname.includes('/search')) {
+      const cardContent = card.querySelector('.resumeCardContent--A03AZ');
+      if (!cardContent) {
+        throw new Error('未找到候选人卡片内容元素');
+      }
+      console.log('准备点击第', index + 1, '个候选人卡片');
+      (cardContent as HTMLElement).click();
+    }
+
+    // 等待简历加载
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 点击简历入库按钮
+    const uploadButton = document.querySelector('.tuili-resume-upload-button');
+    if (uploadButton) {
+      console.log('找到简历入库按钮，准备点击');
+
+      // 创建一个Promise来等待上传完成
+      const uploadPromise = new Promise<void>((resolve) => {
+        // 监听状态变化
+        const statusObserver = new MutationObserver((mutations) => {
+          const statusElement = document.querySelector('.tuili-resume-upload-status');
+          if (statusElement) {
+            const statusText = statusElement.textContent?.trim();
+            // 当状态为空时，表示上传完成
+            if (!statusText) {
+              console.log('状态为空，上传完成，准备关闭弹窗');
+              statusObserver.disconnect();
+              resolve();
+            }
+          }
+        });
+
+        // 开始观察状态元素
+        const statusElement = document.querySelector('.tuili-resume-upload-status');
+        if (statusElement) {
+          statusObserver.observe(statusElement, {
+            characterData: true,
+            childList: true,
+            subtree: true
+          });
+        }
+
+        // 点击上传按钮
+        (uploadButton as HTMLElement).click();
+      });
+
+      // 等待上传完成
+      await uploadPromise;
+    } else {
+      console.log('未找到简历入库按钮');
+    }
+
+    // 判断界面中是否含有 类为 ant-im-modal-content 的元素
+    const modalContent = document.querySelector('.ant-im-modal-content');
+    if (modalContent) {
+      // 找到新的候选人推荐弹窗中的关闭按钮
+      const closeButton = document.querySelector(".ant-im-modal-content .ant-im-modal-close-x");
+      if (closeButton) {
+        console.log('找到关闭按钮，准备点击');
+        (closeButton as HTMLElement).click();
+      } else {
+        console.log('未找到关闭按钮');
+      }
+    }
+    // 关闭简历弹窗
+    const closeButton = document.querySelector(".closeBtn--I_u6B");
+    if (closeButton) {
+      console.log('找到关闭按钮，准备点击');
+      (closeButton as HTMLElement).click();
+    } else {
+      console.log('未找到关闭按钮');
+    }
+
+    // 移除可能存在的评估结果浮窗
+    const evalResultWindow = document.getElementById('resume-evaluation-window');
+    if (evalResultWindow) {
+      evalResultWindow.remove();
+    }
+
+    // 等待关闭动画完成
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    return true;
+  } catch (error) {
+    console.error('处理候选人失败:', error);
+    return false;
+  }
+};
+
+// 开始自动化处理
+const startAutoProcess = async () => {
+  const startIndex = parseInt(autoControl.startInput.value) - 1;
+  const count = parseInt(autoControl.countInput.value);
+
+  if (isNaN(startIndex) || isNaN(count) || startIndex < 0 || count < 1) {
+    createToast('请输入有效的起始位置和数量');
+    return;
+  }
+
+  isAutoProcessing = true;
+  currentIndex = startIndex;
+  totalCount = count;
+
+  autoControl.startButton.style.display = 'none';
+  autoControl.stopButton.style.display = 'inline-block';
+  autoControl.status.textContent = `正在处理第 ${currentIndex + 1} 个候选人...`;
+
+  while (isAutoProcessing && currentIndex < startIndex + count) {
+    const success = await processCandidate(currentIndex);
+    if (!success) {
+      createToast(`处理第 ${currentIndex + 1} 个候选人失败`);
+      break;
+    }
+
+    currentIndex++;
+    autoControl.status.textContent = `正在处理第 ${currentIndex + 1} 个候选人...`;
+
+    if (currentIndex >= startIndex + count) {
+      break;
+    }
+
+    // 等待一段时间再处理下一个
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+
+  stopAutoProcess();
+};
+
+// 停止自动化处理
+const stopAutoProcess = () => {
+  isAutoProcessing = false;
+  autoControl.startButton.style.display = 'inline-block';
+  autoControl.stopButton.style.display = 'none';
+  autoControl.status.textContent = `已完成处理第 ${currentIndex} 个候选人`;
+};
+
 // 监听页面变化，查找下载链接和在线简历
 const observePage = async () => {
   console.log('开始监听页面变化')
@@ -579,6 +920,16 @@ const observePage = async () => {
   const onlineResumeWindow = await createFloatingWindow('推鲤 AI 快聘 - 在线简历', '在线简历入库', 'bottom')
   const attachmentResumeWindow = await createFloatingWindow('推鲤 AI 快聘 - 附件简历', '附件简历入库', 'top')
   
+  // 如果是推荐或搜索页面，创建自动化控制浮窗
+  if (window.location.pathname.includes('/recommend') || window.location.pathname.includes('/search')) {
+    autoControl = createAutoControlWindow();
+    autoControl.window.style.display = 'block';
+
+    // 添加按钮事件监听
+    autoControl.startButton.addEventListener('click', startAutoProcess);
+    autoControl.stopButton.addEventListener('click', stopAutoProcess);
+  }
+
   // 检查目标容器是否存在并处理浮窗
   const handleTargetContainer = async () => {
     try {
@@ -917,7 +1268,9 @@ const pollResumeEvaluation = async (recordId: string, token: string, maxRetries 
                 }
                 
                 if (chatButton) {
+                  console.log('chatButton', chatButton);
                   console.log('找到"立即沟通"按钮，自动点击');
+                  // TODO 复原
                   (chatButton as HTMLButtonElement).click();
                   createToast('已根据AI评估自动点击"立即沟通"按钮');
                 } else {
